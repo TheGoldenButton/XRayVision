@@ -44,18 +44,20 @@
 
 <dialog id="dlg">
   <h3 style="margin-top:0">Settings</h3>
-  <label>API key (Meta)</label>
+  <label>Meta Model API key (starts with LLM)</label>
   <input id="key" type="password" autocomplete="off" placeholder="sk-…">
-  <label>SAM endpoint (POST multipart "image")</label>
-  <input id="samUrl" placeholder="https://…/segment">
+  <label>SAM endpoint (Meta Model API, Responses)</label>
+  <input id="samUrl">
+  <label>SAM model</label>
+  <input id="samModel">
   <label>SAM box format</label>
   <select id="boxFmt"><option value="xywh">[x, y, w, h]</option><option value="xyxy">[x1, y1, x2, y2]</option></select>
   <label>Muse Spark endpoint (OpenAI-style chat completions)</label>
-  <input id="sparkUrl" placeholder="https://…/v1/chat/completions">
+  <input id="sparkUrl" >
   <label>Muse Spark model name</label>
-  <input id="sparkModel" placeholder="muse-spark">
-  <label>Transcription endpoint (POST multipart "file"; blank = browser speech recognition)</label>
-  <input id="sttUrl" placeholder="https://…/transcribe">
+  <input id="sparkModel" >
+  <label>Transcription endpoint (blank = browser speech recognition fallback)</label>
+  <input id="sttUrl" >
   <label>Projection depth (metres)</label>
   <input id="depth" type="number" step="0.1" min="0.4" max="5">
   <div class="row">
@@ -70,11 +72,11 @@
 "use strict";
 /* ---------------- settings ---------------- */
 const $ = id => document.getElementById(id);
-const FIELDS = ['key','samUrl','boxFmt','sparkUrl','sparkModel','sttUrl','depth'];
-const DEF = {boxFmt:'xywh', sparkModel:'muse-spark', depth:'1.5'};
+const FIELDS = ['key','samUrl','samModel','boxFmt','sparkUrl','sparkModel','sttUrl','depth'];
+const DEF = {samUrl:'https://api.meta.ai/v1/responses', samModel:'sam-3.1', sparkUrl:'https://api.meta.ai/v1/chat/completions', sttUrl:'https://api.meta.ai/v1/asr/transcribe', boxFmt:'xywh', sparkModel:'muse-spark-1.3', depth:'1.5'};
 let S = {};
 try { S = JSON.parse(localStorage.getItem('arm-settings') || '{}'); } catch(e) {}
-const cfg = k => S[k] ?? DEF[k] ?? '';
+const cfg = k => S[k] || DEF[k] || '';
 $('gear').onclick = () => { FIELDS.forEach(k => $(k).value = cfg(k)); $('dlg').showModal(); };
 $('cancel').onclick = () => $('dlg').close();
 $('save').onclick = () => {
@@ -133,7 +135,46 @@ const auth = () => cfg('key') ? {Authorization: 'Bearer ' + cfg('key')} : {};
 const dataUrlToBlob = u => { const [h, b] = u.split(','); const bin = atob(b); const a = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], {type: h.match(/:(.*?);/)[1]}); };
 
+function pointsOf(a, out) {
+  if (!Array.isArray(a)) return out;
+  if (a.length === 2 && typeof a[0] === 'number' && typeof a[1] === 'number') out.push(a);
+  else if (a.length > 2 && a.every(v => typeof v === 'number')) for (let i = 0; i + 1 < a.length; i += 2) out.push([a[i], a[i+1]]);
+  else a.forEach(x => pointsOf(x, out));
+  return out;
+}
+// Meta Model API: SAM 3.1 takes ONE text concept per request, so Spark first names candidate objects,
+// then each is segmented in parallel. Output is a special-token string: <|box;x1=..;y1=..;x2=..;y2=..;w=..;h=..|> (+ mask tokens, ignored here).
+const BOX_RE = /<\|box;x1=([\d.]+);y1=([\d.]+);x2=([\d.]+);y2=([\d.]+);w=([\d.]+);h=([\d.]+)(?:;c=([\d.]+))?\|>/g;
 async function callSAM(img) {
+  if (!/meta\.ai/.test(cfg('samUrl'))) return callSAMGeneric(img);
+  if (!cfg('key')) throw new Error('API key not set (gear icon)');
+  hud('Naming candidate objects…');
+  const c = await callSpark('Reply ONLY JSON: {"objects":["noun",...]} listing up to 6 distinct physical objects visible in the image, as short concrete noun phrases (e.g. "coffee mug").', 'List the objects.', img.dataUrl);
+  const names = (c.objects || []).slice(0, 6);
+  if (!names.length) return [];
+  hud('SAM 3.1 segmenting: ' + names.join(', '));
+  const one = async (label, pi) => {
+    const r = await fetch(cfg('samUrl'), {method: 'POST', headers: {'Content-Type': 'application/json', ...auth()},
+      body: JSON.stringify({model: cfg('samModel'), store: false,
+        metadata: {mask_encoding: 'one_bit', include_confidence: 'true'},
+        input: [{type: 'message', role: 'user', content: [
+          {type: 'input_text', text: label}, {type: 'input_image', image_url: img.dataUrl}]}]})});
+    if (!r.ok) throw new Error('SAM ' + r.status + ' ' + (await r.text()).slice(0, 100));
+    const j = await r.json();
+    const txt = j.output_text || (j.output || []).flatMap(o => o.content || []).map(x => x.text || '').join('');
+    console.log('SAM', label, txt.slice(0, 200));
+    return [...txt.matchAll(BOX_RE)].filter(m => m[7] === undefined || +m[7] >= 0.35).map((m, n) => {
+      const [x1, y1, x2, y2, w, h] = m.slice(1, 7).map(Number);
+      return {id: 'o' + Date.now() + '_' + pi + '_' + n, label, cx: (x1 + x2) / 2 / w, cy: (y1 + y2) / 2 / h};
+    });
+  };
+  const res = await Promise.allSettled(names.map(one));
+  const out = res.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+  if (!out.length && res.every(r => r.status === 'rejected')) throw res[0].reason;
+  return out;
+}
+
+async function callSAMGeneric(img) {
   if (!cfg('samUrl')) throw new Error('SAM endpoint not set');
   const fd = new FormData(); fd.append('image', dataUrlToBlob(img.dataUrl), 'scene.jpg');
   const r = await fetch(cfg('samUrl'), {method: 'POST', headers: auth(), body: fd});
@@ -154,7 +195,7 @@ async function callSpark(system, user, imgDataUrl) {
   const content = [{type: 'text', text: user}];
   if (imgDataUrl) content.push({type: 'image_url', image_url: {url: imgDataUrl}});
   const r = await fetch(cfg('sparkUrl'), {method: 'POST', headers: {'Content-Type': 'application/json', ...auth()},
-    body: JSON.stringify({model: cfg('sparkModel'), messages: [{role: 'system', content: system}, {role: 'user', content}]})});
+    body: JSON.stringify({model: cfg('sparkModel'), reasoning_effort: 'low', messages: [{role: 'system', content: system}, {role: 'user', content}]})});
   if (!r.ok) throw new Error('Spark ' + r.status);
   const j = await r.json();
   const txt = j.choices?.[0]?.message?.content || j.output_text || j.text || '';
@@ -163,11 +204,27 @@ async function callSpark(system, user, imgDataUrl) {
   return JSON.parse(m[0]);
 }
 
+// Muse Voice Transcribe accepts only WAV (mono, 16-bit PCM, 16 or 24 kHz), so decode the recording and re-encode.
+async function blobToWav(blob) {
+  const AC = window.AudioContext || window.webkitAudioContext, ctx = new AC();
+  const buf = await ctx.decodeAudioData(await blob.arrayBuffer()); ctx.close();
+  const rate = 16000, off = new OfflineAudioContext(1, Math.max(1, Math.ceil(buf.duration * rate)), rate);
+  const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
+  const f = (await off.startRendering()).getChannelData(0), dv = new DataView(new ArrayBuffer(44 + f.length * 2));
+  const str = (o, t) => [...t].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); dv.setUint32(4, 36 + f.length * 2, true); str(8, 'WAVEfmt '); dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); str(36, 'data'); dv.setUint32(40, f.length * 2, true);
+  for (let i = 0; i < f.length; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, f[i])) * 0x7fff, true);
+  return new Blob([dv], {type: 'audio/wav'});
+}
 async function transcribe(blob) {
-  const fd = new FormData(); fd.append('file', blob, 'q.webm');
-  const r = await fetch(cfg('sttUrl'), {method: 'POST', headers: auth(), body: fd});
-  if (!r.ok) throw new Error('STT ' + r.status);
-  const j = await r.json(); return j.text || j.transcript || '';
+  const fd = new FormData();
+  fd.append('request', new Blob([JSON.stringify({model: 'muse-voice-transcribe-1.0', audioEncoding: 'WAV', mode: 'PUSH_TO_TALK'})], {type: 'application/json'}));
+  fd.append('audio', await blobToWav(blob), 'recording.wav');
+  const r = await fetch(cfg('sttUrl'), {method: 'POST', headers: {Accept: 'application/json', ...auth()}, body: fd});
+  if (!r.ok) throw new Error('STT ' + r.status + ' ' + (await r.text()).slice(0, 100));
+  return (await r.json()).transcript || '';
 }
 
 /* ---------------- pipeline ---------------- */
