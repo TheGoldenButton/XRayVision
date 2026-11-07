@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AR Associative Memory</title>
+<style>
+  :root{--bg:#0e1116;--fg:#e8ecf1;--mut:#8b95a5;--acc:#4da3ff;--card:#171c24;--bd:#2a3240}
+  *{box-sizing:border-box}
+  body{margin:0;font:16px system-ui,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh}
+  header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--bd)}
+  h1{font-size:18px;margin:0}
+  #gear{background:none;border:1px solid var(--bd);color:var(--fg);border-radius:50%;width:42px;height:42px;font-size:22px;cursor:pointer}
+  main{max-width:640px;margin:40px auto;padding:0 20px;line-height:1.5}
+  #enter{background:var(--acc);color:#001;border:0;border-radius:10px;padding:14px 24px;font-size:17px;font-weight:600;cursor:pointer}
+  #enter:disabled{opacity:.4}
+  #msg{color:var(--mut);margin-top:14px;font-size:14px}
+  .how li{margin:6px 0}
+  dialog{background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:14px;width:min(560px,94vw);padding:20px}
+  dialog::backdrop{background:#000a}
+  label{display:block;margin:12px 0 4px;font-size:13px;color:var(--mut)}
+  input,select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);font-size:14px}
+  .row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+  .row button{padding:9px 16px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);cursor:pointer}
+  .row .p{background:var(--acc);color:#001;border:0;font-weight:600}
+  small{color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <h1>AR Associative Memory</h1>
+  <button id="gear" title="Settings" aria-label="Settings">&#9881;</button>
+</header>
+<main>
+  <button id="enter" disabled>Enter AR</button>
+  <div id="msg">Checking WebXR…</div>
+  <h3>Gestures</h3>
+  <ul class="how">
+    <li><b>Pinch &amp; hold (one hand)</b> – scan the scene: image → SAM → Muse Spark → memory.</li>
+    <li><b>Pinch both hands &amp; hold</b> – ask a question aloud; release to send. The scene is re-scanned, your speech is transcribed, and the best associative matches from memory float into view.</li>
+  </ul>
+  <small>Open over HTTPS in the Quest 3 browser. Set your keys with the gear before entering AR.</small>
+</main>
+
+<dialog id="dlg">
+  <h3 style="margin-top:0">Settings</h3>
+  <label>API key (Meta)</label>
+  <input id="key" type="password" autocomplete="off" placeholder="sk-…">
+  <label>SAM endpoint (POST multipart "image")</label>
+  <input id="samUrl" placeholder="https://…/segment">
+  <label>SAM box format</label>
+  <select id="boxFmt"><option value="xywh">[x, y, w, h]</option><option value="xyxy">[x1, y1, x2, y2]</option></select>
+  <label>Muse Spark endpoint (OpenAI-style chat completions)</label>
+  <input id="sparkUrl" placeholder="https://…/v1/chat/completions">
+  <label>Muse Spark model name</label>
+  <input id="sparkModel" placeholder="muse-spark">
+  <label>Transcription endpoint (POST multipart "file"; blank = browser speech recognition)</label>
+  <input id="sttUrl" placeholder="https://…/transcribe">
+  <label>Projection depth (metres)</label>
+  <input id="depth" type="number" step="0.1" min="0.4" max="5">
+  <div class="row">
+    <button id="clear">Clear memory</button>
+    <button id="cancel">Cancel</button>
+    <button id="save" class="p">Save</button>
+  </div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+/* ---------------- settings ---------------- */
+const $ = id => document.getElementById(id);
+const FIELDS = ['key','samUrl','boxFmt','sparkUrl','sparkModel','sttUrl','depth'];
+const DEF = {boxFmt:'xywh', sparkModel:'muse-spark', depth:'1.5'};
+let S = {};
+try { S = JSON.parse(localStorage.getItem('arm-settings') || '{}'); } catch(e) {}
+const cfg = k => S[k] ?? DEF[k] ?? '';
+$('gear').onclick = () => { FIELDS.forEach(k => $(k).value = cfg(k)); $('dlg').showModal(); };
+$('cancel').onclick = () => $('dlg').close();
+$('save').onclick = () => {
+  FIELDS.forEach(k => S[k] = $(k).value.trim());
+  try { localStorage.setItem('arm-settings', JSON.stringify(S)); } catch(e) {}
+  $('dlg').close();
+};
+$('clear').onclick = () => { memory = []; saveMem(); $('dlg').close(); };
+
+/* ---------------- memory / vector space ---------------- */
+// Each object = sparse vector {word: weight}. Words are the vector dimensions.
+let memory = [];
+try { memory = JSON.parse(localStorage.getItem('arm-memory') || '[]'); } catch(e) {}
+const saveMem = () => { try { localStorage.setItem('arm-memory', JSON.stringify(memory.slice(-200))); } catch(e) {} };
+
+const norm = v => Math.sqrt(Object.values(v).reduce((a,b) => a + b*b, 0)) || 1;
+function cosine(a, b) {
+  let d = 0; for (const k in a) if (b[k]) d += a[k]*b[k];
+  return d / (norm(a) * norm(b));
+}
+// word–word co-occurrence: words that appear together in the same object
+function cooccurrence() {
+  const co = {};
+  for (const o of memory) {
+    const ws = Object.entries(o.words);
+    for (const [a, wa] of ws) for (const [b, wb] of ws) {
+      if (a === b) continue;
+      (co[a] ??= {})[b] = (co[a][b] || 0) + wa*wb;
+    }
+  }
+  return co;
+}
+// spreading activation: query words -> co-occurring words -> their co-occurrences
+function expand(q, co, hops = 2, decay = 0.5) {
+  const total = {...q}; let frontier = {...q};
+  for (let h = 0; h < hops; h++) {
+    const next = {};
+    for (const a in frontier) for (const b in (co[a] || {})) {
+      next[b] = (next[b] || 0) + frontier[a] * co[a][b] * decay;
+    }
+    const m = Math.max(1e-9, ...Object.values(next));
+    for (const b in next) { next[b] /= m; total[b] = (total[b] || 0) + next[b] * Math.pow(decay, h+1); }
+    frontier = next;
+  }
+  return total;
+}
+function rank(queryWords, k = 5) {
+  const co = cooccurrence();
+  const assoc = expand(queryWords, co);
+  return memory.map(o => ({o, s: cosine(o.words, queryWords) + 0.6*cosine(o.words, assoc)}))
+    .filter(r => r.s > 0.02).sort((a, b) => b.s - a.s).slice(0, k);
+}
+
+/* ---------------- API adapters (edit here if your endpoints differ) ---------------- */
+const auth = () => cfg('key') ? {Authorization: 'Bearer ' + cfg('key')} : {};
+const dataUrlToBlob = u => { const [h, b] = u.split(','); const bin = atob(b); const a = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], {type: h.match(/:(.*?);/)[1]}); };
+
+async function callSAM(img) {
+  if (!cfg('samUrl')) throw new Error('SAM endpoint not set');
+  const fd = new FormData(); fd.append('image', dataUrlToBlob(img.dataUrl), 'scene.jpg');
+  const r = await fetch(cfg('samUrl'), {method: 'POST', headers: auth(), body: fd});
+  if (!r.ok) throw new Error('SAM ' + r.status);
+  const j = await r.json();
+  const list = j.objects || j.masks || j.detections || j.results || [];
+  return list.map((o, i) => {
+    let b = o.box || o.bbox || o.bounding_box || [0, 0, img.w, img.h];
+    if (cfg('boxFmt') === 'xyxy') b = [b[0], b[1], b[2]-b[0], b[3]-b[1]];
+    const scale = b.some(v => v > 1.5);
+    const cx = (b[0] + b[2]/2) / (scale ? img.w : 1), cy = (b[1] + b[3]/2) / (scale ? img.h : 1);
+    return {id: 'o' + Date.now() + '_' + i, label: o.label || o.name || o.class || o.concept || 'object', cx, cy};
+  });
+}
+
+async function callSpark(system, user, imgDataUrl) {
+  if (!cfg('sparkUrl')) throw new Error('Muse Spark endpoint not set');
+  const content = [{type: 'text', text: user}];
+  if (imgDataUrl) content.push({type: 'image_url', image_url: {url: imgDataUrl}});
+  const r = await fetch(cfg('sparkUrl'), {method: 'POST', headers: {'Content-Type': 'application/json', ...auth()},
+    body: JSON.stringify({model: cfg('sparkModel'), messages: [{role: 'system', content: system}, {role: 'user', content}]})});
+  if (!r.ok) throw new Error('Spark ' + r.status);
+  const j = await r.json();
+  const txt = j.choices?.[0]?.message?.content || j.output_text || j.text || '';
+  const m = txt.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('Spark returned no JSON');
+  return JSON.parse(m[0]);
+}
+
+async function transcribe(blob) {
+  const fd = new FormData(); fd.append('file', blob, 'q.webm');
+  const r = await fetch(cfg('sttUrl'), {method: 'POST', headers: auth(), body: fd});
+  if (!r.ok) throw new Error('STT ' + r.status);
+  const j = await r.json(); return j.text || j.transcript || '';
+}
+
+/* ---------------- pipeline ---------------- */
+const INGEST_SYS = 'You build an associative vector space. For each object, return 8-12 single lowercase words describing what it is, what it does, its context and typical uses, each with a weight 0-1. Reply ONLY JSON: {"objects":[{"id":"...","words":{"word":0.9}}]}';
+const ASK_SYS = 'You see a scene (image + detected objects). Answer the user briefly. Also give 6-12 single lowercase words capturing the concepts of the question with weights 0-1. Reply ONLY JSON: {"answer":"...","query_words":{"word":0.9}}';
+
+async function scan(img) {
+  hud('Segmenting scene…');
+  const objs = await callSAM(img);
+  if (!objs.length) { hud('SAM found no objects'); return []; }
+  hud('Spark indexing ' + objs.length + ' objects…');
+  const res = await callSpark(INGEST_SYS, JSON.stringify(objs.map(o => ({id: o.id, label: o.label}))), img.dataUrl);
+  for (const o of objs) {
+    const w = res.objects?.find(x => x.id === o.id)?.words || {[o.label.toLowerCase()]: 1};
+    w[o.label.toLowerCase()] = 1;
+    o.words = w; o.pos = unproject(img, o.cx, o.cy);
+    memory.push({id: o.id, label: o.label, words: w, pos: o.pos, t: Date.now()});
+  }
+  saveMem(); hud('Remembered: ' + objs.map(o => o.label).join(', '));
+  return objs;
+}
+
+async function ask(img, audioBlob) {
+  hud('Listening to your question…');
+  const [objs, q] = await Promise.all([scan(img), getQuestion(audioBlob)]);
+  if (!q) { hud('Did not catch a question'); return; }
+  hud('Q: ' + q);
+  const res = await callSpark(ASK_SYS, JSON.stringify({question: q, objects: objs.map(o => o.label)}), img.dataUrl);
+  const hits = rank(res.query_words || {});
+  showHits(hits);
+  hud('Q: ' + q + '\n' + res.answer);
+  try { speechSynthesis.speak(new SpeechSynthesisUtterance(res.answer)); } catch(e) {}
+}
+
+let recog = null, recogText = '';
+async function getQuestion(blob) {
+  if (cfg('sttUrl') && blob) return transcribe(blob);
+  return new Promise(res => { const t = setInterval(() => { if (!recog) { clearInterval(t); res(recogText); } }, 100); });
+}
+
+/* ---------------- three.js / WebXR ---------------- */
+let renderer, scene, camera, session, binding, gl, fbo, refSpace;
+let hudSprite, hudCtx, hudTex, hitGroup, capReq = null, lastView = null;
+const THREE_ = THREE;
+
+function makeTextSprite(w, h, scale) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const tex = new THREE_.CanvasTexture(c);
+  const sp = new THREE_.Sprite(new THREE_.SpriteMaterial({map: tex, transparent: true, depthTest: false}));
+  sp.scale.set(scale, scale * h / w, 1); sp.renderOrder = 10;
+  return {sp, c, ctx: c.getContext('2d'), tex};
+}
+function drawText(t, text, {size = 28, bg = '#0e1116cc', fg = '#fff', line = '#4da3ff'} = {}) {
+  const {ctx, c} = t; ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = bg; ctx.strokeStyle = line; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.roundRect(4, 4, c.width - 8, c.height - 8, 24); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = fg; ctx.font = size + 'px system-ui,sans-serif'; ctx.textBaseline = 'top';
+  let y = 22;
+  for (const para of text.split('\n')) {
+    let ln = '';
+    for (const word of para.split(' ')) {
+      if (ctx.measureText(ln + word).width > c.width - 44) { ctx.fillText(ln, 22, y); y += size * 1.25; ln = ''; }
+      ln += word + ' ';
+    }
+    ctx.fillText(ln, 22, y); y += size * 1.25;
+  }
+  t.tex.needsUpdate = true;
+}
+let hudT; const hud = s => { console.log(s); if (hudT) drawText(hudT, s); };
+
+function showHits(hits) {
+  while (hitGroup.children.length) hitGroup.remove(hitGroup.children[0]);
+  for (const {o, s} of hits) {
+    const t = makeTextSprite(384, 96, 0.3);
+    drawText(t, o.label + '  ' + s.toFixed(2), {size: 34, line: '#ffd24d'});
+    t.sp.position.fromArray(o.pos); t.sp.material.opacity = Math.min(1, 0.4 + s);
+    hitGroup.add(t.sp);
+  }
+}
+
+function unproject(img, cx, cy) {
+  const d = parseFloat(cfg('depth')) || 1.5;
+  const proj = new THREE_.Matrix4().fromArray(img.proj), xf = new THREE_.Matrix4().fromArray(img.xf);
+  const p = new THREE_.Vector3(cx * 2 - 1, 1 - cy * 2, 0.5).applyMatrix4(proj.invert());
+  p.multiplyScalar(d / -p.z).applyMatrix4(xf);   // point at depth d along the ray
+  return p.toArray();
+}
+
+function grabCamera(frame) {
+  const pose = frame.getViewerPose(refSpace), v = pose?.views[0];
+  if (!v?.camera) throw new Error('camera-access not granted (needs Quest Browser with camera access enabled)');
+  const w = v.camera.width, h = v.camera.height, tex = binding.getCameraImage(v.camera);
+  const prev = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+  fbo ??= gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const px = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, prev);
+  const id = new ImageData(w, h);
+  for (let y = 0; y < h; y++) id.data.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+  const full = document.createElement('canvas'); full.width = w; full.height = h; full.getContext('2d').putImageData(id, 0, 0);
+  const k = Math.min(1, 1024 / Math.max(w, h)), out = document.createElement('canvas');
+  out.width = Math.round(w * k); out.height = Math.round(h * k); out.getContext('2d').drawImage(full, 0, 0, out.width, out.height);
+  return {dataUrl: out.toDataURL('image/jpeg', 0.85), w: out.width, h: out.height,
+          proj: Array.from(v.projectionMatrix), xf: Array.from(v.transform.matrix)};
+}
+const requestImage = () => new Promise((res, rej) => { capReq = {res, rej}; });
+
+/* ---- gestures ---- */
+const pinch = {left: false, right: false};
+let singleSince = 0, bothSince = 0, scanFired = false, asking = false, recorder = null, chunks = [], micStream = null;
+
+function readPinch(frame) {
+  pinch.left = pinch.right = false;
+  for (const src of session.inputSources) {
+    if (!src.hand) continue;
+    const a = frame.getJointPose(src.hand.get('thumb-tip'), refSpace), b = frame.getJointPose(src.hand.get('index-finger-tip'), refSpace);
+    if (!a || !b) continue;
+    const p = a.transform.position, q = b.transform.position;
+    if (Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) < 0.025) pinch[src.handedness] = true;
+  }
+}
+function gestures(now) {
+  const L = pinch.left, R = pinch.right, both = L && R, one = L !== R;
+  if (both) { singleSince = 0; bothSince ||= now; }
+  else { bothSince = 0; }
+  if (one && !asking) { singleSince ||= now; } else if (!one) { singleSince = 0; scanFired = scanFired && (L || R); }
+
+  if (one && !scanFired && !asking && now - singleSince > 600) {
+    scanFired = true; hud('Scanning…');
+    requestImage().then(scan).catch(e => hud('Error: ' + e.message));
+  }
+  if (both && !asking && now - bothSince > 250) startAsk();
+  if (!both && asking && !(L || R) ) endAsk();
+}
+async function startAsk() {
+  asking = true; recogText = ''; hud('Listening… release to send');
+  imgPromise = requestImage();
+  if (cfg('sttUrl') && micStream) { chunks = []; recorder = new MediaRecorder(micStream); recorder.ondataavailable = e => chunks.push(e.data); recorder.start(); }
+  else {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) { recog = new SR(); recog.onresult = e => recogText = [...e.results].map(r => r[0].transcript).join(' ');
+      recog.onend = () => { recog = null; }; recog.start(); }
+  }
+}
+let imgPromise;
+function endAsk() {
+  asking = false;
+  const go = blob => imgPromise.then(img => ask(img, blob)).catch(e => hud('Error: ' + e.message));
+  if (recorder) { const r = recorder; recorder = null; r.onstop = () => go(new Blob(chunks, {type: 'audio/webm'})); r.stop(); }
+  else { try { recog?.stop(); } catch(e) {} go(null); }
+}
+
+/* ---- session ---- */
+async function start() {
+  renderer = new THREE_.WebGLRenderer({antialias: true, alpha: true});
+  renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');
+  renderer.setPixelRatio(1); document.body.appendChild(renderer.domElement);
+  scene = new THREE_.Scene(); camera = new THREE_.PerspectiveCamera();
+  hitGroup = new THREE_.Group(); scene.add(hitGroup);
+  hudT = makeTextSprite(640, 256, 0.7); hudSprite = hudT.sp; scene.add(hudSprite);
+  gl = renderer.getContext();
+  try { micStream = await navigator.mediaDevices.getUserMedia({audio: true}); } catch(e) { console.warn('mic denied'); }
+  session = await navigator.xr.requestSession('immersive-ar', {
+    requiredFeatures: ['local-floor'], optionalFeatures: ['hand-tracking', 'camera-access']});
+  await renderer.xr.setSession(session);
+  binding = new XRWebGLBinding(session, gl);
+  session.addEventListener('end', () => location.reload());
+  hud('Pinch & hold: scan\nBoth hands: ask a question');
+  const fwd = new THREE_.Vector3();
+  renderer.setAnimationLoop((t, frame) => {
+    if (frame) {
+      refSpace = renderer.xr.getReferenceSpace();
+      readPinch(frame); gestures(t);
+      if (capReq) { const c = capReq; capReq = null; try { c.res(grabCamera(frame)); } catch(e) { c.rej(e); } }
+      const xr = renderer.xr.getCamera(camera);
+      xr.getWorldDirection(fwd);
+      hudSprite.position.copy(xr.position).addScaledVector(fwd, 0.9).add(new THREE_.Vector3(0, 0.3, 0));
+    }
+    renderer.render(scene, camera);
+  });
+}
+
+/* ---------------- boot ---------------- */
+(async () => {
+  const ok = navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false);
+  $('msg').textContent = ok ? 'Ready. ' + memory.length + ' objects in memory.' : 'immersive-ar not supported here (use Quest 3 Browser over HTTPS).';
+  $('enter').disabled = !ok;
+  $('enter').onclick = () => start().catch(e => { $('msg').textContent = 'Failed: ' + e.message; });
+})();
+</script>
+</body>
+</html>
