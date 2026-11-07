@@ -210,7 +210,7 @@ async function getQuestion(blob) {
 
 /* ---------------- three.js / WebXR ---------------- */
 let renderer, scene, camera, session, binding, gl, fbo, refSpace;
-let hudSprite, hudCtx, hudTex, hitGroup, capReq = null, lastView = null;
+let videoEl, hudSprite, hudCtx, hudTex, hitGroup, capReq = null, lastView = null;
 const THREE_ = THREE;
 
 function makeTextSprite(w, h, scale) {
@@ -258,7 +258,16 @@ function unproject(img, cx, cy) {
 
 function grabCamera(frame) {
   const pose = frame.getViewerPose(refSpace), v = pose?.views[0];
-  if (!v?.camera) throw new Error('camera-access not granted (needs Quest Browser with camera access enabled)');
+  if (!v) throw new Error('no viewer pose');
+  if (!v.camera || !session.enabledFeatures?.includes('camera-access')) {
+    // Fallback: Quest Browser currently rejects WebXR camera-access, so use the getUserMedia camera stream.
+    if (!videoEl || !videoEl.videoWidth) throw new Error('No camera stream. Allow camera permission before entering AR.');
+    const k = Math.min(1, 1024 / Math.max(videoEl.videoWidth, videoEl.videoHeight)), c = document.createElement('canvas');
+    c.width = Math.round(videoEl.videoWidth * k); c.height = Math.round(videoEl.videoHeight * k);
+    c.getContext('2d').drawImage(videoEl, 0, 0, c.width, c.height);
+    return {dataUrl: c.toDataURL('image/jpeg', 0.85), w: c.width, h: c.height,
+            proj: Array.from(v.projectionMatrix), xf: Array.from(v.transform.matrix)};
+  }
   const w = v.camera.width, h = v.camera.height, tex = binding.getCameraImage(v.camera);
   const prev = gl.getParameter(gl.FRAMEBUFFER_BINDING);
   fbo ??= gl.createFramebuffer();
@@ -331,6 +340,11 @@ async function start() {
   hudT = makeTextSprite(640, 256, 0.7); hudSprite = hudT.sp; scene.add(hudSprite);
   gl = renderer.getContext();
   try { micStream = await navigator.mediaDevices.getUserMedia({audio: true}); } catch(e) { console.warn('mic denied'); }
+  try {
+    const vs = await navigator.mediaDevices.getUserMedia({video: {width: {ideal: 1280}, height: {ideal: 960}}});
+    videoEl = document.createElement('video'); videoEl.muted = true; videoEl.playsInline = true;
+    videoEl.srcObject = vs; await videoEl.play();
+  } catch(e) { console.warn('camera stream unavailable', e); }
   session = await navigator.xr.requestSession('immersive-ar', {
     requiredFeatures: ['local-floor'], optionalFeatures: ['hand-tracking', 'camera-access']});
   await renderer.xr.setSession(session);
