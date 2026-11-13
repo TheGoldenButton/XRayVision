@@ -2,443 +2,613 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AR Associative Memory</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Concept Field</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600&display=swap">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <style>
-  :root{--bg:#0e1116;--fg:#e8ecf1;--mut:#8b95a5;--acc:#4da3ff;--card:#171c24;--bd:#2a3240}
-  *{box-sizing:border-box}
-  body{margin:0;font:16px system-ui,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh}
-  header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--bd)}
-  h1{font-size:18px;margin:0}
-  #gear{background:none;border:1px solid var(--bd);color:var(--fg);border-radius:50%;width:42px;height:42px;font-size:22px;cursor:pointer}
-  main{max-width:640px;margin:40px auto;padding:0 20px;line-height:1.5}
-  #enter{background:var(--acc);color:#001;border:0;border-radius:10px;padding:14px 24px;font-size:17px;font-weight:600;cursor:pointer}
-  #enter:disabled{opacity:.4}
-  #msg{color:var(--mut);margin-top:14px;font-size:14px}
-  .how li{margin:6px 0}
-  dialog{background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:14px;width:min(560px,94vw);padding:20px}
-  dialog::backdrop{background:#000a}
-  label{display:block;margin:12px 0 4px;font-size:13px;color:var(--mut)}
-  input,select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);font-size:14px}
-  .row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
-  .row button{padding:9px 16px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);cursor:pointer}
-  .row .p{background:var(--acc);color:#001;border:0;font-weight:600}
-  small{color:var(--mut)}
+:root{--cy:#5df0ff;--am:#ffb347;--bg:#01040a;--ink:#d6f6ff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:'Chakra Petch',system-ui,sans-serif;overflow:hidden}
+canvas{display:block}
+.vig{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,8,20,.75)),repeating-linear-gradient(0deg,rgba(93,240,255,.03) 0 1px,transparent 1px 3px)}
+.panel{position:fixed;background:rgba(3,16,28,.55);border:1px solid rgba(93,240,255,.28);backdrop-filter:blur(10px);padding:12px 14px;border-radius:2px;box-shadow:0 0 24px rgba(93,240,255,.08) inset}
+#top{top:14px;left:14px;width:min(380px,calc(100vw - 28px))}
+#top h1{margin:0 0 8px;font-size:18px;font-weight:600;letter-spacing:.06em;color:var(--cy);text-shadow:0 0 12px var(--cy)}
+.row{display:flex;gap:8px;margin-top:8px}
+button,.btn{font:inherit;color:var(--cy);background:rgba(93,240,255,.07);border:1px solid rgba(93,240,255,.5);padding:7px 11px;cursor:pointer;font-size:13px;border-radius:2px;transition:background .15s}
+button:hover,.btn:hover{background:rgba(93,240,255,.2)}
+button:focus-visible,.btn:focus-within,input:focus-visible{outline:2px solid var(--am);outline-offset:2px}
+input[type=text]{flex:1;min-width:0;font:inherit;color:var(--ink);background:rgba(0,0,0,.4);border:1px solid rgba(93,240,255,.4);padding:8px 10px;font-size:14px;border-radius:2px}
+input[type=file]{position:absolute;opacity:0;width:0;height:0}
+#stat{font-size:12px;opacity:.75;margin-top:8px;line-height:1.4}
+#info{right:14px;top:14px;width:min(300px,calc(100vw - 28px));max-height:60vh;overflow:auto;font-size:13px;display:none}
+#info h2{margin:0 0 6px;font-size:20px;color:var(--am);text-shadow:0 0 10px rgba(255,179,71,.6)}
+#info li{margin:2px 0;list-style:none;display:flex;justify-content:space-between;gap:10px}
+#info ul{margin:6px 0 0;padding:0}
+#info .w{opacity:.6}
+#hint{bottom:14px;left:14px;font-size:12px;opacity:.8;max-width:min(520px,calc(100vw - 150px));line-height:1.45}
+#VRButton{background:rgba(3,16,28,.8)!important;border:1px solid var(--cy)!important;color:var(--cy)!important;font-family:inherit!important;border-radius:2px!important}
 </style>
 </head>
 <body>
-<header>
-  <h1>AR Associative Memory</h1>
-  <button id="gear" title="Settings" aria-label="Settings">&#9881;</button>
-</header>
-<main>
-  <button id="enter" disabled>Enter AR</button>
-  <div id="msg">Checking WebXR…</div>
-  <h3>Gestures</h3>
-  <ul class="how">
-    <li><b>Pinch &amp; hold (one hand)</b> – scan: the room image, your head pose and detected surfaces go to Muse Spark, which identifies objects and symbols and updates its own vector memory.</li>
-    <li><b>Pinch both hands &amp; hold</b> – ask a question aloud; release to send. Your speech is transcribed, Muse Spark answers with the room in view, and the best associative matches from memory float into view.</li>
-  </ul>
-  <small>Open over HTTPS in the Quest 3 browser. Set your keys with the gear before entering AR.</small>
-</main>
-
-<dialog id="dlg">
-  <h3 style="margin-top:0">Settings</h3>
-  <label>Meta Model API key (starts with LLM)</label>
-  <input id="key" type="password" autocomplete="off" placeholder="sk-…">
-  <label>Muse Spark endpoint (OpenAI-style chat completions)</label>
-  <input id="sparkUrl" >
-  <label>Muse Spark model name</label>
-  <input id="sparkModel" >
-  <label>Transcription endpoint (blank = browser speech recognition fallback)</label>
-  <input id="sttUrl" >
-  <label>Fallback object distance (metres, used when Spark gives none)</label>
-  <input id="depth" type="number" step="0.1" min="0.4" max="5">
+<div class="vig"></div>
+<div id="top" class="panel">
+  <h1>Concept field</h1>
   <div class="row">
-    <button id="clear">Clear memory</button>
-    <button id="cancel">Cancel</button>
-    <button id="save" class="p">Save</button>
+    <label class="btn">Attach text files<input id="file" type="file" accept=".txt,.md,.text,.csv,.json,.html,text/*" multiple></label>
+    <button id="demo">Load demo text</button>
   </div>
-</dialog>
+  <form id="qf" class="row"><input id="q" type="text" placeholder="Ask about your text, e.g. how does heat affect the ocean?" autocomplete="off"><button type="submit">Ask</button></form>
+  <div class="row"><button id="clr">Clear query &amp; selection</button></div>
+  <div id="stat">Attach one or more text files, or load the demo text, to build the field.</div>
+</div>
+<div id="info" class="panel"></div>
+<div id="hint" class="panel">Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click a concept to select. VR: pinch a concept to select, pinch empty space to drag, pinch with both hands and spread to zoom in or bring together to zoom out. Sticks fly (left move, right turn and height). A adds the selected concept to the query, B clears.</div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>
-"use strict";
-/* ---------------- settings ---------------- */
-const $ = id => document.getElementById(id);
-const FIELDS = ['key','sparkUrl','sparkModel','sttUrl','depth'];
-const DEF = {sparkUrl:'https://api.meta.ai/v1/chat/completions', sparkModel:'muse-spark-1.3', sttUrl:'https://api.meta.ai/v1/asr/transcribe', depth:'1.5'};
-let S = {};
-// v2: older builds saved placeholder model/endpoint values that override the new defaults (causes 404s), so only the API key is migrated.
-try {
-  S = JSON.parse(localStorage.getItem('arm-settings-v2') || 'null');
-  if (!S) { const old = JSON.parse(localStorage.getItem('arm-settings') || '{}'); S = old.key ? {key: old.key} : {}; }
-} catch(e) { S = {}; }
-const cfg = k => S[k] || DEF[k] || '';
-$('gear').onclick = () => { FIELDS.forEach(k => $(k).value = cfg(k)); $('dlg').showModal(); };
-$('cancel').onclick = () => $('dlg').close();
-$('save').onclick = () => {
-  FIELDS.forEach(k => { const v = $(k).value.trim(); if (v && (k === 'key' || v !== DEF[k])) S[k] = v; else delete S[k]; });
-  try { localStorage.setItem('arm-settings-v2', JSON.stringify(S)); } catch(e) {}
-  $('dlg').close();
-};
-$('clear').onclick = () => { memory = []; saveMem(); $('dlg').close(); };
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {VRButton} from 'three/addons/webxr/VRButton.js';
+import {XRHandModelFactory} from 'three/addons/webxr/XRHandModelFactory.js';
+import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
 
-/* ---------------- memory / vector space ---------------- */
-// Each object = sparse vector {word: weight}. Words are the vector dimensions.
-let memory = [];
-try { memory = JSON.parse(localStorage.getItem('arm-memory') || '[]'); } catch(e) {}
-const saveMem = () => { try { localStorage.setItem('arm-memory', JSON.stringify(memory.slice(-200))); } catch(e) {} };
+/* ---------- lexicon (lifted verbatim from the symbol transformer) ---------- */
+const STOP=new Set(`the and for with are there was were been has had have did does doing having done you your yours her hers him his she they them their theirs its our ours mine that this per of to in is it be by as at an on am he me my we us if or so do but off out himself herself itself myself yourself ourselves themselves yes no thereby get gets got getting goes going went let lets one ones than then too very just also can could would should might may must shall these those such some any each both either neither other others another about from into onto here while upon up down out off even yet nor quite whenever wherever whatever whoever whichever what when where which who whom whose why how because since during before after above below between through under again further once`.split(' '));
+`it's|that's|there's|here's|what's|who's|how's|where's|when's|why's|which's|he's|she's|let's|i'm|i've|i'll|i'd|you're|you've|you'll|you'd|we're|we've|we'll|they're|they've|they'll`.split('|').forEach(w=>STOP.add(w));
+{const pr='i you he she it we they that there here what who how when where which whom why this these those one someone everyone nobody let would could should might must may will shall'.split(' ');
+ pr.forEach(e=>["'s","'d","'ll","'ve","'re","'m"].forEach(t=>STOP.add(e+t)));
+ `ll ve re em th tis twas twere twill twould twixt yeah yep yup nope okay ok oh ah aha ahh hmm hm um uh er erm huh hey hello hi ooh oops wow whoa yay ugh aw gee lol lmao omg btw etc eh ha haha hehe ya gonna gotta wanna gimme lemme dunno kinda sorta outta cuz coz thee thou thy thine ye hast hath doth dost wilt shalt wert wast didst hadst canst couldst wouldst shouldst ere nay yea prithee methinks wherefore whence hither thither whilst ma'am y'all o'clock e'en ne'er o'er ain't`.split(' ').forEach(w=>STOP.add(w));}
+const STRUCT=new Set(`since today tonight yesterday tomorrow later earlier once twice ago soon already often always sometimes usually rarely seldom recently formerly lately meanwhile afterward afterwards ever whenever year years month months week weeks day days decade decades century centuries hour hours minute minutes time times period second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth twentieth hundredth four five seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred hundreds thousand thousands million millions billion billions dozen dozens slightly rather quite fairly nearly mostly largely mainly partly entirely completely totally extremely highly greatly especially particularly generally typically merely roughly approximately many much several numerous various enough plenty another others either every somehow anyway toward towards across around above below beyond between against upon beside besides amid back forward through throughout within inside outside among amongst along alongside despite regarding concerning versus via beneath behind ahead apart aside away nearby thereby therein thereof thereafter herein wherein whereby whereas whereupon hence accordingly consequently furthermore moreover nevertheless nonetheless otherwise instead indeed perhaps maybe namely respectively additionally together altogether forth onward wherever whichever whatever whoever however become becomes became becoming remain remains remained remaining seem seems appear appears appeared called named referred considered regarded contain contains contained consist consists consisting begin begins began begun started continue continues continued tend tends tended allow allows allowed require requires required involve involves involved live lives lived thing things way ways kind kinds sort sorts part parts number numbers amount lot lots bit case cases example examples fact facts large larger largest small smaller smallest big bigger biggest little huge tiny major minor main chief principal whole entire high higher highest low lower lowest long longer longest short early late latest recent current old young middle top previous former latter common general usual normal typical available necessary important significant simple basic real full  said says say saying told tell tells telling asked ask asks replied reply answered cried exclaimed whispered shouted yes`.split(' '));
+const GEN=new Map();`able above across actually after afterwards again against allow allows almost already also although always among amongst another around art automatically away back basically became become becomes before began begin begun below besides between beyond bit bring brought came certain chapter come comes coming currently dost doth during e'en either enough ere etc even eventually ever example examples fact fairly far finally find first five following found four gave generally get gets give given gives go goes going gone good got great hast hath hence hither however immediately include included includes including indeed just keep kept kind knew know known knows last least leave less let lets like little long look looked looks lot lots made make makes making man many mean means meant men merely methinks might more moreover most mostly much nay ne'er near nearly need needs neither never new next now o'er obtain obtained often old one onto other own per perhaps potentially previously prithee probably provide provides put quite rather really recently refer refers said same saw say says second see seem seemed seems seen several shalt show showed shown shows simply six sometimes sort specifically start started still such suddenly take taken takes tell thee then therefore thine thing things think third thither thou thought three through thus thy tis told took toward towards tried try twas two under upon use used uses using usually various via want wanted way ways well went whence wherefore whether whilst whole will wilt within yea yet value values type types line version file result list set form view fact called valid return returns returned single multiple different possible similar specific particular otherwise whenever whether exactly indicate indicates indicating otherwise contents users user due allow allowed argument arguments default defaults following instance instances object objects`.split(' ').forEach(w=>GEN.set(w,.25));
+const BREAKW=new Set('but however although though yet whereas while nevertheless nonetheless instead'.split(' '));
+const WHW=new Set('what when where who whom whose which why how'.split(' '));
+const okw=e=>e.length<=24&&!/(.)\1\1/.test(e)&&!WHW.has(e);
+function junkW(e){if(/n't$/.test(e))return true;if(e.indexOf("'")<0)return false;const t=/^([a-z-]+)'(s|d|ll|ve|re|m|t)$/.exec(e);return !t||STOP.has(t[1])||t[1].length<2||t[2]!=='s';}
+const TOKRE=/[\p{L}\p{M}]+(?:['-][\p{L}\p{M}]+)*|\d+(?:[.,]\d+)*|[.!?;:()\u2014\u2013]+|,|\n[ \t\r]*\n/gu;
+const FILL=1,BRKP=.9,MAXBRK=40;
 
-const norm = v => Math.sqrt(Object.values(v).reduce((a,b) => a + b*b, 0)) || 1;
-function cosine(a, b) {
-  let d = 0; for (const k in a) if (b[k]) d += a[k]*b[k];
-  return d / (norm(a) * norm(b));
+/* ---------- corpus: same encoding as the symbol transformer ---------- */
+let corp=[],vocab=['','\u0001'],cfreq=[0,0],cIdf=new Float32Array(0),CN=0,LT=1,HZ=120,DEC=[],PMIN=25,DOCW=80,exclC=null;
+const rawId=new Map();
+function setRange(h,a){HZ=h;DEC=Array.from({length:h+1},(_,s)=>s?Math.pow(s,-a):0);}
+function resetCorpus(){corp=[];vocab=['','\u0001'];cfreq=[0,0];rawId.clear();exclC=null;}
+function idFor(e){let t=rawId.get(e);if(t!==undefined)return t;
+  if(e.charCodeAt(0)<58?e.length>15:(e.length<2||STOP.has(e)||junkW(e))){rawId.set(e,-1);return -1;}
+  t=vocab.length;vocab.push(e);cfreq.push(0);rawId.set(e,t);return t;}
+function encode(text){
+  const ids=[],pol=[];let n=0;
+  const src=text.replace(/[\u2018\u2019]/g,"'").replace(/[\u2010\u2011]/g,'-').toLowerCase();
+  for(const m of src.matchAll(TOKRE)){
+    const e=m[0],c=e.charCodeAt(0);let id=0,pf=0;
+    if(c>=97){if(!BREAKW.has(e)){id=idFor(e);if(id<0)id=FILL;}}
+    else if(c>=48&&c<=57){id=idFor(e.replace(/,/g,''));if(id<0)id=FILL;}
+    else if(e===','){id=FILL;pf=4;}
+    if(c===10)pf|=32;
+    if(id!==0||(ids.length&&ids[ids.length-1]!==0)){ids.push(id);pol.push(pf);if(id>FILL)n++;}
+    else if(c===10&&pol.length)pol[pol.length-1]|=32;
+  }
+  return {ids:Uint32Array.from(ids),pol:Uint8Array.from(pol),n};
 }
-// word–word co-occurrence: words that appear together in the same object
-function cooccurrence() {
-  const co = {};
-  for (const o of memory) {
-    const ws = Object.entries(o.words);
-    for (const [a, wa] of ws) for (const [b, wb] of ws) {
-      if (a === b) continue;
-      (co[a] ??= {})[b] = (co[a][b] || 0) + wa*wb;
+function foldPlurals(){ // plural forms count as their singular when the singular occurs
+  const rm=Uint32Array.from({length:vocab.length},(_,i)=>i);let any=false;
+  for(let i=2;i<vocab.length;i++){const w=vocab[i];
+    if(w.length<4||w.charCodeAt(0)<97||/(ss|us|is)$/.test(w)||!w.endsWith('s'))continue;
+    for(const s of [w.endsWith('ies')?w.slice(0,-3)+'y':null,w.slice(0,-1),/(ch|sh|s|x|z|o)es$/.test(w)?w.slice(0,-2):null]){
+      const j=s&&rawId.get(s);if(j>1&&j!==i){rm[i]=j;any=true;break;}}}
+  if(any)corp.forEach(d=>{for(let k=0;k<d.ids.length;k++)d.ids[k]=rm[d.ids[k]];});
+}
+function recount(){
+  cfreq=new Array(vocab.length).fill(0);CN=0;LT=0;
+  corp.forEach(d=>{const t=d.ids;LT+=t.length;for(let i=1;i<t.length;i++)cfreq[t[i]]++;if(t.length&&t[0])cfreq[t[0]]++;CN+=d.n;});
+  const L=[];
+  corp.forEach(d=>{let r=0;const t=d.ids,s=d.pol;for(let a=0;a<t.length;a++){if(t[a]===0){if(s[a]&32){r&&L.push(r);r=0;}}else if(t[a]>FILL)r++;}r&&L.push(r);});
+  L.sort((a,b)=>a-b);
+  const med=L.length>=5?L[L.length>>1]:0,n=Math.max(1,LT);
+  const s=Math.max(40,Math.min(200,med?Math.round(1.2*med):120)),r=n<2e4?1.5:n<1e5?1.25:1;
+  setRange(Math.min(200,Math.round(s*r)),Math.max(.6,Math.min(.9,.2+.1*Math.log10(Math.max(n,1e3)))));
+  PMIN=med?Math.max(8,Math.min(40,Math.round(.25*med))):25;DOCW=med?Math.max(50,Math.min(120,Math.round(.8*med))):80;
+  const df=new Uint32Array(vocab.length),flag=new Uint8Array(vocab.length);let nw=0,cnt=0,cur=[];
+  const flush=()=>{if(cnt){nw++;for(const x of cur){df[x]++;flag[x]=0;}cur.length=0;cnt=0;}};
+  corp.forEach(d=>{const t=d.ids;for(let e=0;e<t.length;e++){const x=t[e];if(x>FILL){if(!flag[x]){flag[x]=1;cur.push(x);}cnt++;}if(cnt>=DOCW||(x===0&&cnt>=DOCW/2))flush();}flush();});
+  cIdf=new Float32Array(vocab.length);
+  for(let i=1;i<vocab.length;i++)if(cfreq[i]){
+    if(nw>=3)cIdf[i]=Math.max(0,Math.log(1+(nw-df[i]+.5)/(df[i]+.5)));
+    else cIdf[i]=Math.max(0,Math.log(1+1/(3*(cfreq[i]/Math.max(1,CN))+.005)));}
+  corp.forEach(d=>{const t=d.ids,p=d.pol,a=[],o=[];let i=0;
+    for(let e=0;e<t.length;e++){if(t[e]===0){if(p[e]&32){a.push(e);o.push(i);i=0;}}else i++;}
+    o.push(i);const m=new Map();for(let e=0;e<a.length;e++)m.set(a[e],Math.min(o[e],o[e+1])<PMIN);d.pb=m;d.post=null;});
+  exclC=new Uint8Array(vocab.length);
+  for(let e=1;e<vocab.length;e++)if(vocab[e].charCodeAt(0)<58||STRUCT.has(vocab[e]))exclC[e]=1;exclC[FILL]=1;
+}
+function eachFwd(l,t,fn,end,pb){const a=Math.min(end-1,t+HZ);let o=0,i=1;
+  for(let s=t+1;s<=a;s++){const x=l[s];if(x!==0){if(x>FILL)fn(s,s-t,i);}else{if(++o>MAXBRK)break;const e=pb&&pb.get(s);i*=e===undefined?BRKP:e?.5:0;if(i===0)break;}}}
+function eachBwd(l,t,fn,start,pb){const a=Math.max(start,t-HZ);let o=0,i=1;
+  for(let s=t-1;s>=a;s--){const x=l[s];if(x!==0){if(x>FILL)fn(s,t-s,i);}else{if(++o>MAXBRK)break;const e=pb&&pb.get(s);i*=e===undefined?BRKP:e?.5:0;if(i===0)break;}}}
+/* distance-decayed co-occurrence scan around each term, lift-scored (symbol transformer's leapScan) */
+function leapScan(terms,excl){
+  const n=vocab.length,s=new Uint16Array(n),SD=new Map();
+  const R=terms.map(()=>({acc:new Map(),raw:new Map(),fp:new Map(),fw:new Map(),hits:0}));
+  terms.forEach((e,t)=>{let c=0;e.ids.forEach(x=>{s[x]=t+1;c+=cfreq[x];});e.stride=Math.max(1,Math.ceil(c/4e4));});
+  let off=0;
+  for(const d of corp){
+    const l=d.ids,h=l.length,base=off;off+=h;
+    if(!d.post){const m=new Map();for(let k=0;k<h;k++){const x=l[k];if(x>FILL){const q=m.get(x);q?q.push(k):m.set(x,[k]);}}d.post=m;}
+    const u=[];terms.forEach(e=>e.ids.forEach(id=>{const p=d.post.get(id);if(p)for(const k of p)u.push(k);}));u.sort((a,b)=>a-b);
+    for(const o of u){
+      const g=s[l[o]]-1;if(g<0)continue;const y=terms[g],w=R[g];
+      let s0=o,e0=o;for(;s0>0&&o-s0<60&&l[s0-1]!==0;)s0--;for(;e0<h-1&&e0-o<60&&l[e0+1]!==0;)e0++;
+      if(e0-s0>=4){let k=2166136261;for(let q=s0;q<=e0;q++)k=Math.imul(k^l[q],16777619);k=(k>>>0)+'_'+(e0-s0);
+        const at=base+s0,pv=SD.get(k);if(pv===undefined)SD.set(k,at);else if(pv!==at)continue;}
+      if(w.hits++%y.stride)continue;
+      const fn=fwd=>(e,dist,m)=>{const r=l[e];if(excl[r])return;const a=DEC[dist]*m;
+        w.acc.set(r,(w.acc.get(r)||0)+a);w.raw.set(r,(w.raw.get(r)||0)+1);if(fwd)w.fw.set(r,(w.fw.get(r)||0)+a);
+        const q=base+e,f=w.fp.get(r);if(f===undefined||q<f)w.fp.set(r,q);};
+      eachFwd(l,o,fn(1),h,d.pb);eachBwd(l,o,fn(0),0,d.pb);
     }
   }
-  return co;
+  const DW=2*DEC.reduce((x,y)=>x+y,0);
+  return R.map((n,t)=>{const e=terms[t],p=new Map();let a=0;
+    n.acc.forEach((v,r)=>{
+      if(n.hits>=20&&CN>3e3&&n.raw.get(r)*e.stride<2)return;
+      const o=cIdf[r];if(!(o>.08))return;
+      const ex=Math.ceil(n.hits/e.stride)*DW*cfreq[r]/Math.max(1,LT);
+      const i=Math.log(1+v)*o*(GEN.get(vocab[r])||1)*Math.log(1+v/(ex+1));
+      p.set(r,i);if(i>a)a=i;});
+    p.forEach((v,r)=>p.set(r,v/(a||1)));
+    return {p,fp:n.fp,hits:n.hits,acc:n.acc,fw:n.fw};});
 }
-// spreading activation: query words -> co-occurring words -> their co-occurrences
-function expand(q, co, hops = 2, decay = 0.5) {
-  const total = {...q}; let frontier = {...q};
-  for (let h = 0; h < hops; h++) {
-    const next = {};
-    for (const a in frontier) for (const b in (co[a] || {})) {
-      next[b] = (next[b] || 0) + frontier[a] * co[a][b] * decay;
-    }
-    const m = Math.max(1e-9, ...Object.values(next));
-    for (const b in next) { next[b] /= m; total[b] = (total[b] || 0) + next[b] * Math.pow(decay, h+1); }
-    frontier = next;
+function adKeep(a){if(!a.length)return 0;const m=a.reduce((x,y)=>x+y,0)/a.length,sd=Math.sqrt(a.reduce((x,y)=>x+(y-m)*(y-m),0)/a.length),T=m-sd;return a.filter(x=>x>=T).length;}
+function leapOverlap(e,t,n,s){
+  const r=t.reduce((x,y)=>x+y,0)||1,a=new Map();
+  e.forEach((e,i)=>e.p.forEach((sc,id)=>{let o=a.get(id);
+    if(!o)a.set(id,o={cw:0,sw:0,n:0,per:new Map(),idx:[],fp:Infinity});
+    o.cw+=t[i];o.sw+=t[i]*sc;o.n++;o.per.set(i,sc);o.idx.push(i);
+    const f=e.fp.get(id);if(f!==undefined&&f<o.fp)o.fp=f;}));
+  const o=[];
+  a.forEach((e,id)=>{const c=e.cw/r;if(e.n<n||c<s)return;o.push({id,cov:c,n:e.n,idx:e.idx,per:e.per,fp:e.fp,s:Math.pow(c,1.5)*(e.sw/e.cw)});});
+  return o.sort((x,y)=>y.s-x.s);
+}
+/* Leap 1 (words co-occurring with several query terms) and Leap 2 (overlap of the overlap) */
+function coocc(qWords){
+  const s=vocab.length,o=new Uint8Array(s),a=[];
+  qWords.forEach(t=>{
+    const ids=[];const id=rawId.get(t);
+    if(id>1&&cfreq[id])ids.push(id);
+    else if(t.length>=5)for(let i=2;i<s;i++){const w=vocab[i];if(cfreq[i]&&w.length>=5&&w.slice(0,5)===t.slice(0,5)&&Math.abs(w.length-t.length)<=3)ids.push(i);}
+    if(!ids.length)return;ids.forEach(x=>o[x]=1);
+    a.push({q:t,ids,f:ids.reduce((x,y)=>x+cfreq[y],0)});});
+  if(!a.length)return null;
+  const wi=e=>Math.log(1+CN/e.f),lm=Math.max(...a.map(wi))||1;a.forEach(e=>e.w=wi(e)/lm);
+  const d=new Uint8Array(s);for(let e=0;e<s;e++)d[e]=exclC[e]||o[e];
+  const u=leapScan(a,d),m=a.map((_,i)=>i).filter(i=>u[i].hits>0);
+  if(!m.length)return {seeds:a,M:[]};
+  const f=m.map(i=>u[i]),p=m.map(i=>a[i].w),g=m.length;
+  let y=leapOverlap(f,p,Math.min(2,g),0);
+  if(g>1&&y.length<2*g){const e=leapOverlap(f,p,1,0).filter(e=>!y.some(t=>t.id===e.id)).slice(0,2*g-y.length);y=y.concat(e).sort((x,z)=>z.s-x.s);}
+  y=y.slice(0,Math.min(70,Math.max(g,adKeep(y.map(e=>e.s)))));
+  const w=y[0]?y[0].s:1;y.forEach(e=>{e.s/=w;e.via=e.idx.map(i=>a[m[i]].q);});
+  const v0=y.filter(e=>okw(vocab[e.id])&&!junkW(vocab[e.id])),
+    v=v0.slice(0,Math.min(14,Math.max(2,adKeep(v0.map(e=>e.s))))),SW=v.length?v.reduce((x,e)=>x+e.s,0)/v.length:0;
+  let b=[];
+  if(v.length>=2){
+    const ex=d.slice();y.forEach(t=>ex[t.id]=1);
+    b=leapOverlap(leapScan(v.map(e=>({ids:[e.id]})),ex),v.map(e=>SW+e.s),2,0);
+    b=b.slice(0,Math.min(70,Math.max(2,adKeep(b.map(e=>e.s)))));
+    const t=b[0]?b[0].s:1;
+    b.forEach(e=>{e.s=SW*e.s/t;const n=e.idx.map(i=>v[i]).sort((x,z)=>z.s-x.s);e.from=n[0].id;e.via=[...new Set(n.flatMap(x=>x.via))];});
   }
-  return total;
-}
-function rank(queryWords, k = 5) {
-  const co = cooccurrence();
-  const assoc = expand(queryWords, co);
-  return memory.map(o => ({o, s: cosine(o.words, queryWords) + 0.6*cosine(o.words, assoc)}))
-    .filter(r => r.s > 0.02).sort((a, b) => b.s - a.s).slice(0, k);
-}
-
-/* ---------------- Meta Model API adapters ---------------- */
-const auth = () => cfg('key') ? {Authorization: 'Bearer ' + cfg('key')} : {};
-
-async function callSpark(system, user, imgDataUrl) {
-  if (!cfg('sparkUrl')) throw new Error('Muse Spark endpoint not set');
-  const content = [{type: 'text', text: user}];
-  if (imgDataUrl) content.push({type: 'image_url', image_url: {url: imgDataUrl}});
-  const r = await fetch(cfg('sparkUrl'), {method: 'POST', headers: {'Content-Type': 'application/json', ...auth()},
-    body: JSON.stringify({model: cfg('sparkModel'), reasoning_effort: 'low', messages: [{role: 'system', content: system}, {role: 'user', content}]})});
-  if (!r.ok) throw new Error('Spark ' + r.status + ' ' + (await r.text()).slice(0, 120));
-  const j = await r.json();
-  const txt = j.choices?.[0]?.message?.content || j.output_text || j.text || '';
-  const m = txt.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error('Spark returned no JSON');
-  return JSON.parse(m[0]);
-}
-
-// Muse Voice Transcribe accepts only WAV (mono, 16-bit PCM, 16 or 24 kHz), so decode the recording and re-encode.
-async function blobToWav(blob) {
-  const AC = window.AudioContext || window.webkitAudioContext, ctx = new AC();
-  const buf = await ctx.decodeAudioData(await blob.arrayBuffer()); ctx.close();
-  const rate = 16000, off = new OfflineAudioContext(1, Math.max(1, Math.ceil(buf.duration * rate)), rate);
-  const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
-  const f = (await off.startRendering()).getChannelData(0), dv = new DataView(new ArrayBuffer(44 + f.length * 2));
-  const str = (o, t) => [...t].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0)));
-  str(0, 'RIFF'); dv.setUint32(4, 36 + f.length * 2, true); str(8, 'WAVEfmt '); dv.setUint32(16, 16, true);
-  dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true);
-  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); str(36, 'data'); dv.setUint32(40, f.length * 2, true);
-  for (let i = 0; i < f.length; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, f[i])) * 0x7fff, true);
-  return new Blob([dv], {type: 'audio/wav'});
-}
-async function transcribe(blob) {
-  const fd = new FormData();
-  fd.append('request', new Blob([JSON.stringify({model: 'muse-voice-transcribe-1.0', audioEncoding: 'WAV', mode: 'PUSH_TO_TALK'})], {type: 'application/json'}));
-  fd.append('audio', await blobToWav(blob), 'recording.wav');
-  const r = await fetch(cfg('sttUrl'), {method: 'POST', headers: {Accept: 'application/json', ...auth()}, body: fd});
-  if (!r.ok) throw new Error('STT ' + r.status + ' ' + (await r.text()).slice(0, 100));
-  return (await r.json()).transcript || '';
-}
-
-/* ---------------- pipeline: Muse Spark owns the vector memory ---------------- */
-const MEM_SYS = `You are the memory manager of a spatial associative memory worn in AR. You receive a photo from the headset camera, the headset pose and detected surfaces (metres, room coordinates), and the CURRENT MEMORY. The memory is a sparse vector space: each entry's dimensions are single lowercase words describing what it is, what it does, where it is used, and related concepts.
-Identify every distinct object, symbol, sign, icon, logo or piece of text you can see, and return an entry for each. Reuse the id of an existing entry when it is the same thing; new entries get a short new id. Give 8-12 meaningful words per entry with weights 0-1. Give x,y = centre of the thing in the image, normalised 0-1 from the top-left, and dist_m = your estimate of its distance from the camera in metres. You own the database: refine the words of existing entries when you learn more, list duplicates in "merge" as {from,into}, and list wrong or stale ids in "forget". Never invent things you cannot see.`;
-const ENTRY = '{"id":"","label":"","kind":"object|symbol|text","words":{"word":0.9},"x":0.5,"y":0.5,"dist_m":1.5}';
-const SCAN_FMT = 'Reply ONLY JSON: {"scene":"one sentence","upsert":[' + ENTRY + '],"merge":[{"from":"","into":""}],"forget":[""]}';
-const ASK_FMT = 'Also answer the user\'s question briefly, and give 6-12 single lowercase words capturing the concepts of the question with weights 0-1. Reply ONLY JSON: {"answer":"...","query_words":{"word":0.9},"scene":"one sentence","upsert":[' + ENTRY + '],"merge":[],"forget":[]}';
-
-function context(img, extra) {
-  const m = img.xf;
-  return JSON.stringify({...extra,
-    head: {pos: [m[12], m[13], m[14]].map(v => +v.toFixed(2)), forward: [-m[8], -m[9], -m[10]].map(v => +v.toFixed(2))},
-    surfaces: (img.planes || []).map(p => ({label: p.label, at: p.at, size: p.s.map(v => +v.toFixed(1))})),
-    memory: memory.slice(-60).map(o => ({id: o.id, label: o.label, words: Object.entries(o.words).sort((a, b) => b[1] - a[1]).slice(0, 8).map(e => e[0]), at: o.pos.map(v => +v.toFixed(1))}))});
-}
-
-function applyMemory(res, img) {
-  const byId = new Map(memory.map(o => [o.id, o])), seen = [];
-  for (const u of res.upsert || []) {
-    if (!u || !u.label) continue;
-    const words = {};
-    for (const [k, v] of Object.entries(u.words || {})) words[String(k).toLowerCase()] = Math.max(0, Math.min(1, +v || 0));
-    words[String(u.label).toLowerCase()] = 1;
-    const pos = place(img, u.x != null ? +u.x : 0.5, u.y != null ? +u.y : 0.5, +u.dist_m);
-    const id = u.id || 'o' + Date.now() + Math.random().toString(36).slice(2, 5), ex = byId.get(id);
-    if (ex) { Object.assign(ex, {label: u.label, words, pos, t: Date.now()}); }
-    else { const o = {id, label: u.label, kind: u.kind || 'object', words, pos, t: Date.now()}; memory.push(o); byId.set(id, o); }
-    seen.push(u.label);
+  y.forEach(e=>{const r=new Map();e.per.forEach((sc,i)=>r.set(a[m[i]].q,sc));e.pq=r;});
+  b.forEach(e=>{const r=new Map();let z=0;
+    e.idx.forEach(j=>{const sd=v[j],wj=(SW+sd.s)*(e.per.get(j)||0);z+=wj;sd.pq.forEach((sc,q)=>r.set(q,(r.get(q)||0)+wj*sc));});
+    z>0&&r.forEach((sc,q)=>r.set(q,sc/z));e.pq=r;});
+  let M=[];const seen=new Set();
+  y.forEach(e=>{if(!seen.has(e.id)){seen.add(e.id);M.push({id:e.id,s:e.s,lp:1,pq:e.pq,via:e.via});}});
+  b.forEach(e=>{if(!seen.has(e.id)){seen.add(e.id);M.push({id:e.id,s:e.s,lp:2,pq:e.pq,via:e.via,from:e.from});}});
+  M=M.filter(e=>okw(vocab[e.id])&&!junkW(vocab[e.id]));
+  if(M.length>=4){ // leap-2 cohesion: results that share contexts with other results are favoured
+    const P=leapScan(M.map(e=>({ids:[e.id]})),d),n=M.length,
+      nm=P.map(x=>{let q=0;x.p.forEach(v=>q+=v*v);return Math.sqrt(q)||1;}),ov=new Float32Array(n*n);
+    for(let i=0;i<n;i++){const A=P[i].p;if(!A.size)continue;
+      for(let j=i+1;j<n;j++){const B=P[j].p;if(!B.size)continue;const sm=A.size<=B.size?A:B,lg=sm===A?B:A;let dd=0;
+        sm.forEach((v,k)=>{const w=lg.get(k);w&&(dd+=v*w);});ov[i*n+j]=ov[j*n+i]=dd/(nm[i]*nm[j]);}}
+    const Lx=M.map((e,i)=>{let aa=0,bb=0;for(let j=0;j<n;j++)if(j!==i){aa+=M[j].s*ov[i*n+j];bb+=M[j].s;}return bb?aa/bb:0;}),
+      lmx=Math.max(1e-9,...Lx),Ln=Lx.map(x=>x/lmx),ml=Ln.reduce((x,y)=>x+y,0)/n;
+    M.forEach((e,i)=>{e.s*=(Ln[i]+ml)/(1+ml);});
   }
-  for (const m of res.merge || []) {
-    const a = byId.get(m.from), b = byId.get(m.into);
-    if (!a || !b || a === b) continue;
-    for (const [k, v] of Object.entries(a.words)) b.words[k] = Math.max(b.words[k] || 0, v);
-    memory = memory.filter(o => o !== a); byId.delete(m.from);
+  M.sort((x,z)=>z.s-x.s);
+  return {seeds:a,M};
+}
+
+/* ---------- graph model: nodes are the words the pipeline above would surface ---------- */
+let nodes=[],edges=[],word2i=new Map(),sel=-1,Q=null;
+const MAXN=600,K=6;
+function buildField(){
+  const cand=[];
+  for(let i=2;i<vocab.length;i++){
+    const w=vocab[i];
+    if(!cfreq[i]||exclC[i]||!(cIdf[i]>.08)||!okw(w)||junkW(w)||w.charCodeAt(0)<97)continue;
+    cand.push([i,cfreq[i]*cIdf[i]*(GEN.get(w)||1)]);
   }
-  for (const id of res.forget || []) { memory = memory.filter(o => o.id !== id); byId.delete(id); }
-  saveMem(); return seen;
-}
-
-async function scan(img) {
-  showPreview(img.dataUrl); hud('Spark is looking at the room…');
-  const res = await callSpark(MEM_SYS + '\n' + SCAN_FMT, context(img), img.dataUrl);
-  const seen = applyMemory(res, img);
-  hud('Spark sees: ' + (res.scene || '?') + '\nUpdated: ' + (seen.join(', ') || 'nothing') + '\nMemory: ' + memory.length + ' entries');
-  return seen;
-}
-
-async function ask(img, audioBlob) {
-  showPreview(img.dataUrl); hud('Transcribing…');
-  const q = await getQuestion(audioBlob);
-  if (!q) { hud('Did not catch a question'); return; }
-  hud('Q: ' + q + '\nSpark is thinking…');
-  const res = await callSpark(MEM_SYS + '\n' + ASK_FMT, context(img, {question: q}), img.dataUrl);
-  applyMemory(res, img);
-  showHits(rank(res.query_words || {}));
-  hud('Q: ' + q + '\n' + (res.answer || ''));
-  try { speechSynthesis.speak(new SpeechSynthesisUtterance(res.answer || '')); } catch(e) {}
-}
-
-let recog = null, recogText = '';
-async function getQuestion(blob) {
-  if (cfg('sttUrl') && blob) return transcribe(blob);
-  return new Promise(res => { const t = setInterval(() => { if (!recog) { clearInterval(t); res(recogText); } }, 100); });
-}
-
-/* ---------------- three.js / WebXR ---------------- */
-let renderer, scene, camera, session, binding, gl, fbo, refSpace;
-let videoEl, hudSprite, hudCtx, hudTex, hitGroup, capReq = null, lastView = null;
-const THREE_ = THREE;
-
-function makeTextSprite(w, h, scale) {
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  const tex = new THREE_.CanvasTexture(c);
-  const sp = new THREE_.Sprite(new THREE_.SpriteMaterial({map: tex, transparent: true, depthTest: false}));
-  sp.scale.set(scale, scale * h / w, 1); sp.renderOrder = 10;
-  return {sp, c, ctx: c.getContext('2d'), tex};
-}
-function drawText(t, text, {size = 28, bg = '#0e1116cc', fg = '#fff', line = '#4da3ff'} = {}) {
-  const {ctx, c} = t; ctx.clearRect(0, 0, c.width, c.height);
-  ctx.fillStyle = bg; ctx.strokeStyle = line; ctx.lineWidth = 4;
-  ctx.beginPath(); ctx.roundRect(4, 4, c.width - 8, c.height - 8, 24); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = fg; ctx.font = size + 'px system-ui,sans-serif'; ctx.textBaseline = 'top';
-  let y = 22;
-  for (const para of text.split('\n')) {
-    let ln = '';
-    for (const word of para.split(' ')) {
-      if (ctx.measureText(ln + word).width > c.width - 44) { ctx.fillText(ln, 22, y); y += size * 1.25; ln = ''; }
-      ln += word + ' ';
-    }
-    ctx.fillText(ln, 22, y); y += size * 1.25;
-  }
-  t.tex.needsUpdate = true;
-}
-let hudT; const hud = s => { console.log(s); if (hudT) drawText(hudT, s); };
-
-let previewSp;
-function showPreview(url) {
-  const im = new Image();
-  im.onload = () => {
-    const t = new THREE_.Texture(im); t.needsUpdate = true;
-    previewSp.material.map = t; previewSp.material.needsUpdate = true;
-    previewSp.scale.set(0.4, 0.4 * im.height / im.width, 1); previewSp.visible = true;
-  };
-  im.src = url;
-}
-function showHits(hits) {
-  while (hitGroup.children.length) hitGroup.remove(hitGroup.children[0]);
-  for (const {o, s} of hits) {
-    const t = makeTextSprite(384, 96, 0.3);
-    drawText(t, o.label + '  ' + s.toFixed(2), {size: 34, line: '#ffd24d'});
-    t.sp.position.fromArray(o.pos); t.sp.material.opacity = Math.min(1, 0.4 + s);
-    hitGroup.add(t.sp);
-  }
-}
-
-// Project an image point into room space: intersect the camera ray with Quest-detected surfaces, else use Spark's distance estimate.
-function place(img, cx, cy, dist) {
-  const proj = new THREE_.Matrix4().fromArray(img.proj), xf = new THREE_.Matrix4().fromArray(img.xf);
-  const o = new THREE_.Vector3().setFromMatrixPosition(xf);
-  const d = new THREE_.Vector3(cx * 2 - 1, 1 - cy * 2, 0.5).applyMatrix4(proj.invert()).normalize().transformDirection(xf);
-  let best = null;
-  for (const p of img.planes || []) {
-    const pm = new THREE_.Matrix4().fromArray(p.m), n = new THREE_.Vector3(0, 1, 0).transformDirection(pm);
-    const pp = new THREE_.Vector3().setFromMatrixPosition(pm), den = n.dot(d);
-    if (Math.abs(den) < 1e-3) continue;
-    const t = n.dot(pp.clone().sub(o)) / den;
-    if (t < 0.3 || t > 8) continue;
-    const hit = o.clone().addScaledVector(d, t), l = hit.clone().applyMatrix4(pm.clone().invert());
-    if (Math.abs(l.x - p.c[0]) > p.s[0] / 2 + 0.25 || Math.abs(l.z - p.c[1]) > p.s[1] / 2 + 0.25) continue;
-    if (!best || t < best.t) best = {t, hit};
-  }
-  if (best && (!(dist > 0) || Math.abs(best.t - dist) < 1.5)) return best.hit.toArray();
-  const dd = dist > 0 ? dist : (parseFloat(cfg('depth')) || 1.5);
-  return o.addScaledVector(d, Math.min(6, Math.max(0.5, dd))).toArray();
-}
-// Quest plane detection (semantic labels like table, wall, couch) -> compact surfaces for Spark and for ray placement.
-function readPlanes(frame) {
-  const out = [];
-  for (const p of frame.detectedPlanes || []) {
-    const pose = frame.getPose(p.planeSpace, refSpace); if (!pose || !p.polygon?.length) continue;
-    const xs = p.polygon.map(q => q.x), zs = p.polygon.map(q => q.z), m = Array.from(pose.transform.matrix);
-    const at = [m[12], m[13], m[14]].map(v => +v.toFixed(2));
-    out.push({label: p.semanticLabel || p.orientation || 'surface', m, at,
-      c: [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2],
-      s: [Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)]});
-  }
-  return out.slice(0, 16);
-}
-
-function grabCamera(frame) {
-  const pose = frame.getViewerPose(refSpace), v = pose?.views[0];
-  if (!v) throw new Error('no viewer pose');
-  if (!v.camera || !session.enabledFeatures?.includes('camera-access')) {
-    // Fallback: Quest Browser currently rejects WebXR camera-access, so use the getUserMedia camera stream.
-    if (!videoEl || !videoEl.videoWidth) throw new Error('No camera stream. Allow camera permission before entering AR.');
-    const k = Math.min(1, 1024 / Math.max(videoEl.videoWidth, videoEl.videoHeight)), c = document.createElement('canvas');
-    c.width = Math.round(videoEl.videoWidth * k); c.height = Math.round(videoEl.videoHeight * k);
-    c.getContext('2d').drawImage(videoEl, 0, 0, c.width, c.height);
-    const t = document.createElement('canvas'); t.width = t.height = 16;
-    const tc = t.getContext('2d'); tc.drawImage(c, 0, 0, 16, 16);
-    const px = tc.getImageData(0, 0, 16, 16).data; let sum = 0; for (let i = 0; i < px.length; i += 4) sum += px[i] + px[i+1] + px[i+2];
-    if (sum / (256 * 3) < 6) throw new Error('Camera frame is black: the browser is not getting the passthrough camera.');
-    return {dataUrl: c.toDataURL('image/jpeg', 0.85), w: c.width, h: c.height,
-            proj: Array.from(v.projectionMatrix), xf: Array.from(v.transform.matrix)};
-  }
-  const w = v.camera.width, h = v.camera.height, tex = binding.getCameraImage(v.camera);
-  const prev = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-  fbo ??= gl.createFramebuffer();
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-  const px = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, prev);
-  const id = new ImageData(w, h);
-  for (let y = 0; y < h; y++) id.data.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
-  const full = document.createElement('canvas'); full.width = w; full.height = h; full.getContext('2d').putImageData(id, 0, 0);
-  const k = Math.min(1, 1024 / Math.max(w, h)), out = document.createElement('canvas');
-  out.width = Math.round(w * k); out.height = Math.round(h * k); out.getContext('2d').drawImage(full, 0, 0, out.width, out.height);
-  return {dataUrl: out.toDataURL('image/jpeg', 0.85), w: out.width, h: out.height,
-          proj: Array.from(v.projectionMatrix), xf: Array.from(v.transform.matrix)};
-}
-const requestImage = () => new Promise((res, rej) => { capReq = {res, rej}; });
-
-/* ---- gestures ---- */
-const pinch = {left: false, right: false};
-let singleSince = 0, bothSince = 0, scanFired = false, asking = false, recorder = null, chunks = [], micStream = null;
-
-function readPinch(frame) {
-  pinch.left = pinch.right = false;
-  for (const src of session.inputSources) {
-    if (!src.hand) continue;
-    const a = frame.getJointPose(src.hand.get('thumb-tip'), refSpace), b = frame.getJointPose(src.hand.get('index-finger-tip'), refSpace);
-    if (!a || !b) continue;
-    const p = a.transform.position, q = b.transform.position;
-    if (Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) < 0.025) pinch[src.handedness] = true;
-  }
-}
-function gestures(now) {
-  const L = pinch.left, R = pinch.right, both = L && R, one = L !== R;
-  if (both) { singleSince = 0; bothSince ||= now; }
-  else { bothSince = 0; }
-  if (one && !asking) { singleSince ||= now; } else if (!one) { singleSince = 0; scanFired = scanFired && (L || R); }
-
-  if (one && !scanFired && !asking && now - singleSince > 600) {
-    scanFired = true; hud('Scanning…');
-    requestImage().then(scan).catch(e => hud('Error: ' + e.message));
-  }
-  if (both && !asking && now - bothSince > 250) startAsk();
-  if (!both && asking && !(L || R) ) endAsk();
-}
-async function startAsk() {
-  asking = true; recogText = ''; hud('Listening… release to send');
-  imgPromise = requestImage();
-  if (cfg('sttUrl') && micStream) { chunks = []; recorder = new MediaRecorder(micStream); recorder.ondataavailable = e => chunks.push(e.data); recorder.start(); }
-  else {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) { recog = new SR(); recog.onresult = e => recogText = [...e.results].map(r => r[0].transcript).join(' ');
-      recog.onend = () => { recog = null; }; recog.start(); }
-  }
-}
-let imgPromise;
-function endAsk() {
-  asking = false;
-  const go = blob => imgPromise.then(img => ask(img, blob)).catch(e => hud('Error: ' + e.message));
-  if (recorder) { const r = recorder; recorder = null; r.onstop = () => go(new Blob(chunks, {type: 'audio/webm'})); r.stop(); }
-  else { try { recog?.stop(); } catch(e) {} go(null); }
-}
-
-/* ---- session ---- */
-async function start() {
-  renderer = new THREE_.WebGLRenderer({antialias: true, alpha: true});
-  renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');
-  renderer.setPixelRatio(1); document.body.appendChild(renderer.domElement);
-  scene = new THREE_.Scene(); camera = new THREE_.PerspectiveCamera();
-  hitGroup = new THREE_.Group(); scene.add(hitGroup);
-  hudT = makeTextSprite(640, 256, 0.7); hudSprite = hudT.sp; scene.add(hudSprite);
-  previewSp = new THREE_.Sprite(new THREE_.SpriteMaterial({transparent: true, depthTest: false})); previewSp.visible = false; previewSp.renderOrder = 9; scene.add(previewSp);
-  gl = renderer.getContext();
-  try { micStream = await navigator.mediaDevices.getUserMedia({audio: true}); } catch(e) { console.warn('mic denied'); }
-  try {
-    const vs = await navigator.mediaDevices.getUserMedia({video: {width: {ideal: 1280}, height: {ideal: 960}}});
-    videoEl = document.createElement('video'); videoEl.muted = true; videoEl.playsInline = true;
-    videoEl.srcObject = vs; await videoEl.play();
-  } catch(e) { console.warn('camera stream unavailable', e); }
-  session = await navigator.xr.requestSession('immersive-ar', {
-    requiredFeatures: ['local-floor'], optionalFeatures: ['hand-tracking', 'camera-access', 'plane-detection']});
-  await renderer.xr.setSession(session);
-  binding = new XRWebGLBinding(session, gl);
-  session.addEventListener('end', () => location.reload());
-  hud('Pinch & hold: scan\nBoth hands: ask a question');
-  const fwd = new THREE_.Vector3();
-  renderer.setAnimationLoop((t, frame) => {
-    if (frame) {
-      refSpace = renderer.xr.getReferenceSpace();
-      readPinch(frame); gestures(t);
-      if (capReq) { const c = capReq; capReq = null; try { const g = grabCamera(frame); g.planes = readPlanes(frame); c.res(g); } catch(e) { c.rej(e); } }
-      const xr = renderer.xr.getCamera(camera);
-      xr.getWorldDirection(fwd);
-      hudSprite.position.copy(xr.position).addScaledVector(fwd, 0.9).add(new THREE_.Vector3(0, 0.3, 0));
-      const rt = new THREE_.Vector3().crossVectors(fwd, new THREE_.Vector3(0, 1, 0)).normalize();
-      previewSp.position.copy(hudSprite.position).addScaledVector(rt, -0.6);
-    }
-    renderer.render(scene, camera);
+  let list=cand.filter(c=>cfreq[c[0]]>=2);if(list.length<30)list=cand;
+  list=list.sort((a,b)=>b[1]-a[1]).slice(0,MAXN);
+  const id2k=new Map(list.map((c,k)=>[c[0],k]));
+  const scan=leapScan(list.map(c=>({ids:[c[0]]})),exclC);
+  const pairs=new Map();
+  list.forEach(([id],k)=>{
+    const sc=scan[k],top=[...sc.p].filter(([r,v])=>id2k.has(r)&&r!==id).sort((a,b)=>b[1]-a[1]).slice(0,K);
+    top.forEach(([r,v])=>{
+      const j=id2k.get(r),key=k<j?k+'|'+j:j+'|'+k;
+      const fa=sc.fw.get(r)/(sc.acc.get(r)||1); // share of occurrences where r comes after this word
+      let e=pairs.get(key);if(!e){e={a:Math.min(k,j),b:Math.max(k,j),sw:0,dir:0,c:0};pairs.set(key,e);}
+      e.sw+=v;e.c++;e.dir+=(k===e.a?fa:1-fa);});
   });
+  const used=new Set();pairs.forEach(e=>{used.add(e.a);used.add(e.b);});
+  nodes=[];word2i=new Map();const remap=new Map();
+  [...used].sort((x,y)=>x-y).forEach(k=>{const [id,score]=list[k];remap.set(k,nodes.length);word2i.set(id,nodes.length);
+    nodes.push({id,word:vocab[id],freq:cfreq[id],idf:cIdf[id],score,maxw:0,adj:[]});});
+  edges=[];
+  pairs.forEach(e=>{const A=remap.get(e.a),B=remap.get(e.b),fw=e.dir/e.c>=.5,w=e.sw/e.c;
+    const ed={s:fw?A:B,t:fw?B:A,w};const i=edges.length;edges.push(ed);
+    nodes[A].adj.push({j:B,e:i});nodes[B].adj.push({j:A,e:i});nodes[A].maxw=Math.max(nodes[A].maxw,w);nodes[B].maxw=Math.max(nodes[B].maxw,w);});
+  const mw=Math.max(...edges.map(e=>e.w),1e-6);edges.forEach(e=>e.wn=Math.sqrt(e.w/mw));
+  layout();
 }
 
-/* ---------------- boot ---------------- */
-(async () => {
-  const ok = navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false);
-  $('msg').textContent = ok ? 'Ready. ' + memory.length + ' objects in memory.' : 'immersive-ar not supported here (use Quest 3 Browser over HTTPS).';
-  $('enter').disabled = !ok;
-  $('enter').onclick = () => start().catch(e => { $('msg').textContent = 'Failed: ' + e.message; });
-})();
+function layout(){
+  const N=nodes.length,P=new Float32Array(N*3),D=new Float32Array(N*3);
+  for(let i=0;i<N;i++){const u=Math.random()*2-1,a=Math.random()*6.283,r=Math.sqrt(1-u*u);P[i*3]=r*Math.cos(a);P[i*3+1]=u;P[i*3+2]=r*Math.sin(a);}
+  const k=Math.cbrt(8/N),it=320;
+  for(let n=0;n<it;n++){
+    D.fill(0);
+    for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){
+      const dx=P[i*3]-P[j*3],dy=P[i*3+1]-P[j*3+1],dz=P[i*3+2]-P[j*3+2];
+      const d2=dx*dx+dy*dy+dz*dz+1e-4,f=k*k/d2;
+      D[i*3]+=dx*f;D[i*3+1]+=dy*f;D[i*3+2]+=dz*f;D[j*3]-=dx*f;D[j*3+1]-=dy*f;D[j*3+2]-=dz*f;
+    }
+    for(const e of edges){
+      const i=e.s,j=e.t,dx=P[i*3]-P[j*3],dy=P[i*3+1]-P[j*3+1],dz=P[i*3+2]-P[j*3+2];
+      const d=Math.sqrt(dx*dx+dy*dy+dz*dz)+1e-4,f=d/k*(.3+.7*e.wn);
+      D[i*3]-=dx*f;D[i*3+1]-=dy*f;D[i*3+2]-=dz*f;D[j*3]+=dx*f;D[j*3+1]+=dy*f;D[j*3+2]+=dz*f;
+    }
+    const t=.35*(1-n/it)+.01;
+    for(let i=0;i<N;i++){
+      for(let c=0;c<3;c++)D[i*3+c]-=P[i*3+c]*.6;
+      const m=Math.hypot(D[i*3],D[i*3+1],D[i*3+2])+1e-6,s=Math.min(m,t)/m;
+      for(let c=0;c<3;c++)P[i*3+c]+=D[i*3+c]*s;
+    }
+  }
+  let cx=0,cy=0,cz=0;for(let i=0;i<N;i++){cx+=P[i*3];cy+=P[i*3+1];cz+=P[i*3+2];}cx/=N;cy/=N;cz/=N;
+  let mx=0;for(let i=0;i<N;i++){P[i*3]-=cx;P[i*3+1]-=cy;P[i*3+2]-=cz;mx=Math.max(mx,Math.hypot(P[i*3],P[i*3+1],P[i*3+2]));}
+  for(let i=0;i<N*3;i++)P[i]/=mx;
+  nodes.forEach((n,i)=>{n.x=P[i*3];n.y=P[i*3+1];n.z=P[i*3+2];});
+}
+
+/* ---------- three.js scene ---------- */
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
+document.body.prepend(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x01040a);
+const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.01,200);
+camera.position.set(0,1.6,.9);
+const dolly=new THREE.Group();dolly.add(camera);scene.add(dolly);
+const G=new THREE.Group();G.position.set(0,1.4,-1.1);G.scale.setScalar(.6);scene.add(G);
+const controls=new OrbitControls(camera,renderer.domElement);
+controls.target.copy(G.position);controls.enableDamping=true;controls.update();
+
+const grid=new THREE.GridHelper(10,40,0x0b5266,0x06222c);grid.material.transparent=true;grid.material.opacity=.5;scene.add(grid);
+const ringMat=new THREE.LineBasicMaterial({color:0x2bd6ff,transparent:true,opacity:.35,blending:THREE.AdditiveBlending});
+[.55,.4,.25].forEach(r=>{const pts=[];for(let i=0;i<=96;i++)pts.push(new THREE.Vector3(Math.cos(i/96*6.2832)*r,0,Math.sin(i/96*6.2832)*r));const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),ringMat);l.position.set(0,.65,-1.1);scene.add(l);});
+const U={uT:{value:0},uH:{value:900}};
+const nodeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+vertexShader:`attribute float aSize;attribute float aI;attribute vec3 aCol;uniform float uH;uniform float uT;varying vec3 vC;varying float vI;
+void main(){vec4 mv=modelViewMatrix*vec4(position,1.);float tw=.85+.15*sin(uT*2.+position.x*40.+position.y*31.);
+gl_PointSize=max(aSize*uH*.5*projectionMatrix[1][1]/-mv.z,2.5);vC=aCol;vI=aI*tw;gl_Position=projectionMatrix*mv;}`,
+fragmentShader:`varying vec3 vC;varying float vI;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;
+float h=pow(1.-d*2.,2.);float c=smoothstep(.16,.0,d);gl_FragColor=vec4(vC*(h*.8+c*1.4)*vI,1.);}`});
+const edgeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+vertexShader:`attribute float aT;attribute float aI;attribute float aPh;attribute vec3 aCol;uniform float uT;varying float vA;varying vec3 vC;
+void main(){vA=aI*mix(.55,1.,aT);vC=aCol;
+gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+fragmentShader:`varying float vA;varying vec3 vC;void main(){gl_FragColor=vec4(vC*vA,1.);}`});
+
+const TR=7,PN=TR*2; // comet: 7 points per particle, 2 particles per edge
+const dotMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+vertexShader:`attribute vec3 aB;attribute vec3 aCol;attribute float aPh;attribute float aI;attribute float aDir;attribute float aLag;attribute float aK;uniform float uT;uniform float uH;varying float vI;varying float vH;varying vec3 vC;
+void main(){float len=length(aB-position)+1e-4;float t=fract(uT*.09/len+aPh);float d=t*len-aLag*.014;float f=d/len;
+float on=step(0.,d)*step(.02,aI)*step(aK*.55,aI);float fc=clamp(f,0.,1.);vec3 p=mix(position,aB,aDir>.5?1.-fc:fc);vec4 mv=modelViewMatrix*vec4(p,1.);
+float tail=pow(1.-aLag/7.,1.6);float fade=smoothstep(0.,.14,f)*(1.-smoothstep(.86,1.,f));
+gl_PointSize=max(.0105*(.45+.55*tail)*uH*.5*projectionMatrix[1][1]/-mv.z,2.);vI=on*fade*tail*min(1.,aI+.35);vH=1.-aLag/7.;vC=aCol;
+gl_Position=on>0.?projectionMatrix*mv:vec4(2.,2.,2.,1.);}`,
+fragmentShader:`varying float vI;varying float vH;varying vec3 vC;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;float h=pow(1.-d*2.,2.);float c=smoothstep(.2,.0,d);
+gl_FragColor=vec4((vC*h+vec3(1.)*c*vH*vH)*vI*1.5,1.);}`});
+const CY=[.36,.94,1],VI=[.6,.48,1],AM=[1,.7,.28],WH=[.92,1,1],GO=[1,.84,.45];
+const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
+let pts,lines,dots,dI,dD,dC,nA,nS,nC,eI,eC,labelGroup=new THREE.Group(),fmax=1;G.add(labelGroup);
+const labelCache=new Map();
+function label(i,kind){
+  const key=nodes[i].word+kind;let s=labelCache.get(key);
+  if(!s){
+    const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');
+    x.font='600 34px "Chakra Petch",system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';
+    x.shadowColor=kind?'#ffb347':'#5df0ff';x.shadowBlur=12;x.fillStyle=kind?'#ffe2a8':'#d6fbff';x.fillText(nodes[i].word,128,32);
+    const m=new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false,blending:THREE.AdditiveBlending});
+    s=new THREE.Sprite(m);s.scale.set(.16,.04,1);s.renderOrder=10;labelCache.set(key,s);
+  }
+  s.position.set(nodes[i].x,nodes[i].y+.035,nodes[i].z);return s;
+}
+function buildVisuals(){
+  if(pts){G.remove(pts,lines,dots);pts.geometry.dispose();lines.geometry.dispose();dots.geometry.dispose();}
+  labelCache.forEach(s=>{s.material.map.dispose();s.material.dispose();});labelCache.clear();
+  const N=nodes.length,E=edges.length;fmax=Math.max(...nodes.map(n=>n.score));
+  const pos=new Float32Array(N*3);nodes.forEach((n,i)=>pos.set([n.x,n.y,n.z],i*3));
+  nA=new Float32Array(N);nS=new Float32Array(N);nC=new Float32Array(N*3);
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  g.setAttribute('aI',new THREE.BufferAttribute(nA,1));g.setAttribute('aSize',new THREE.BufferAttribute(nS,1));g.setAttribute('aCol',new THREE.BufferAttribute(nC,3));
+  pts=new THREE.Points(g,nodeMat);pts.frustumCulled=false;
+  const ep=new Float32Array(E*6),et=new Float32Array(E*2),ph=new Float32Array(E*2);eI=new Float32Array(E*2);eC=new Float32Array(E*6);
+  const dp=new Float32Array(E*PN*3),dB=new Float32Array(E*PN*3),dPh=new Float32Array(E*PN),dL=new Float32Array(E*PN),dK=new Float32Array(E*PN);dI=new Float32Array(E*PN);dD=new Float32Array(E*PN);dC=new Float32Array(E*PN*3);
+  edges.forEach((e,k)=>{const a=nodes[e.s],b=nodes[e.t];ep.set([a.x,a.y,a.z,b.x,b.y,b.z],k*6);et[k*2]=0;et[k*2+1]=1;ph[k*2]=ph[k*2+1]=Math.random();
+    const r0=Math.random();for(let m=0;m<PN;m++){const q=k*PN+m,kk=m>=TR?1:0;dp.set([a.x,a.y,a.z],q*3);dB.set([b.x,b.y,b.z],q*3);dPh[q]=r0+kk*.5;dL[q]=m%TR;dK[q]=kk;}});
+  const dg=new THREE.BufferGeometry();dg.setAttribute('position',new THREE.BufferAttribute(dp,3));dg.setAttribute('aB',new THREE.BufferAttribute(dB,3));
+  dg.setAttribute('aPh',new THREE.BufferAttribute(dPh,1));dg.setAttribute('aLag',new THREE.BufferAttribute(dL,1));dg.setAttribute('aK',new THREE.BufferAttribute(dK,1));
+  dg.setAttribute('aI',new THREE.BufferAttribute(dI,1));dg.setAttribute('aDir',new THREE.BufferAttribute(dD,1));dg.setAttribute('aCol',new THREE.BufferAttribute(dC,3));
+  dots=new THREE.Points(dg,dotMat);dots.frustumCulled=false;
+  const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.BufferAttribute(ep,3));
+  lg.setAttribute('aT',new THREE.BufferAttribute(et,1));lg.setAttribute('aPh',new THREE.BufferAttribute(ph,1));
+  lg.setAttribute('aI',new THREE.BufferAttribute(eI,1));lg.setAttribute('aCol',new THREE.BufferAttribute(eC,3));
+  lines=new THREE.LineSegments(lg,edgeMat);lines.frustumCulled=false;
+  G.add(lines,pts,dots);sel=-1;Q=null;applyState();
+}
+
+/* ---------- state / highlighting ---------- */
+let visible=[];
+function applyState(){
+  const N=nodes.length,E=edges.length;if(!N)return;
+  const nI=new Float32Array(N),ni=new Float32Array(N),ei=new Float32Array(E),ec=new Uint8Array(E),nc=new Uint8Array(N);
+  const labs=[];
+  for(let i=0;i<N;i++){ni[i]=Math.log(1+nodes[i].score)/Math.log(1+fmax);}
+  if(Q&&Q.A){
+    for(let i=0;i<N;i++){nI[i]=Q.show[i]?.25+.75*Q.A[i]:.04;nc[i]=Q.show[i]?1:0;}
+    for(let e=0;e<E;e++){ei[e]=Q.eI[e];ec[e]=Q.eI[e]>.02?1:0;}
+    Q.top.slice(0,35).forEach(i=>labs.push([i,1]));
+  }else{
+    for(let i=0;i<N;i++)nI[i]=.45+.4*ni[i];
+    for(let e=0;e<E;e++)ei[e]=.05+.12*edges[e].wn;
+    nodes.map((n,i)=>i).sort((a,b)=>nodes[b].score-nodes[a].score).slice(0,22).forEach(i=>labs.push([i,0]));
+  }
+  if(sel>=0){
+    for(let i=0;i<N;i++)nI[i]*=.3;for(let e=0;e<E;e++)ei[e]*=.15;
+    nI[sel]=1.3;nc[sel]=2;labs.length=0;labs.push([sel,1]);
+    nodes[sel].adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w).forEach((a,r)=>{
+      nI[a.j]=.95;nc[a.j]=3;ei[a.e]=.45+.8*edges[a.e].wn;ec[a.e]=2;if(r<24)labs.push([a.j,0]);});
+  }
+  visible=[];
+  for(let i=0;i<N;i++){
+    nA[i]=nI[i];nS[i]=.012+.03*ni[i]+(nc[i]===2?.03:nc[i]===1?.012*nI[i]:0);
+    const col=nc[i]===2?GO:nc[i]===1?mix(CY,AM,Math.min(1,nI[i])):nc[i]===3?WH:mix(VI,CY,ni[i]);
+    nC.set(col,i*3);if(nI[i]>.1)visible.push(i);
+  }
+  const flowQ=Q&&Q.A,aT=lines.geometry.attributes.aT;
+  edges.forEach((e,k)=>{
+    const col=ec[k]===2?WH:ec[k]===1?AM:CY;
+    eI[k*2]=eI[k*2+1]=ei[k];eC.set(col,k*6);eC.set(col,k*6+3);
+    const dir=flowQ&&Q.A[e.s]<Q.A[e.t]?1:0;
+    aT.array[k*2]=dir;aT.array[k*2+1]=1-dir;
+    const act=sel>=0?(ec[k]===2?1:0):(flowQ&&ei[k]>.12?ei[k]:0);
+    const dc=flowQ?[1,.92,.62]:[.8,1,1];
+    for(let m=0;m<PN;m++){const q=k*PN+m;dI[q]=act;dD[q]=dir;dC.set(dc,q*3);}
+  });
+  aT.needsUpdate=true;for(const a of ['aI','aDir','aCol'])dots.geometry.attributes[a].needsUpdate=true;
+  for(const a of ['aI','aSize','aCol'])pts.geometry.attributes[a].needsUpdate=true;
+  lines.geometry.attributes.aI.needsUpdate=true;lines.geometry.attributes.aCol.needsUpdate=true;
+  labelGroup.clear();labs.forEach(([i,k])=>labelGroup.add(label(i,k)));
+  updateInfo();
+}
+function runQuery(text){
+  if(!nodes.length){stat('Build the field first.');return;}
+  const words=[...new Set([...text.toLowerCase().replace(/[\u2018\u2019]/g,"'").matchAll(TOKRE)].map(m=>m[0]).filter(w=>w.charCodeAt(0)>=97&&w.length>1&&!STOP.has(w)&&!BREAKW.has(w)&&!junkW(w)))];
+  const res=coocc(words);
+  if(!res){Q=null;applyState();stat('None of those words occur in your text. Try terms from it.');return;}
+  const N=nodes.length,E=edges.length,A=new Float32Array(N),show=new Uint8Array(N),pq=new Array(N);let miss=0,n1=0,n2=0;
+  res.seeds.forEach(sd=>sd.ids.forEach(id=>{const k=word2i.get(id);if(k!==undefined){A[k]=1;show[k]=1;pq[k]=new Map([[sd.q,1]]);}}));
+  res.M.forEach(e=>{const k=word2i.get(e.id);if(k===undefined){miss++;return;}
+    A[k]=Math.max(A[k],(e.lp===1?1:.8)*(.25+.75*Math.min(1,e.s)));show[k]=1;pq[k]=e.pq;e.lp===1?n1++:n2++;});
+  const top=[...Array(N).keys()].filter(i=>show[i]).sort((a,b)=>A[b]-A[a]);
+  const eIv=new Float32Array(E);let mo=1e-6;
+  edges.forEach((e,k)=>{if(!show[e.s]||!show[e.t])return;let ov=0;
+    pq[e.s].forEach((v,q)=>{ov+=Math.min(v,pq[e.t].get(q)||0);});
+    ov=(ov+.25*Math.min(A[e.s],A[e.t]))*(.4+.6*e.wn);eIv[k]=ov;mo=Math.max(mo,ov);});
+  for(let k=0;k<E;k++)eIv[k]=eIv[k]>0?.1+.95*Math.pow(eIv[k]/mo,.8):.008;
+  Q={A,show,top,eI:eIv,terms:res.seeds.map(s=>s.q)};sel=-1;applyState();
+  stat(`Leap 1 found ${n1} words, leap 2 found ${n2} more${miss?` (${miss} outside the drawn field)`:''}. Lights travel the direction the query spreads; brighter edges carry more overlap.`);
+}
+function select(i){sel=i;applyState();}
+function clearAll(){sel=-1;Q=null;$q.value='';applyState();if(nodes.length)stat(summary());}
+
+/* ---------- UI ---------- */
+const $=s=>document.querySelector(s),$q=$('#q'),$info=$('#info');
+const stat=t=>{$('#stat').textContent=t;hud();};
+const summary=()=>`${nodes.length} concepts, ${edges.length} links from ${docCount} file${docCount===1?'':'s'}.`;
+let docCount=0;
+function updateInfo(){
+  if(sel>=0){
+    const n=nodes[sel],c=n.adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w).slice(0,10);
+    $info.style.display='block';
+    $info.innerHTML=`<h2>${n.word}</h2><div>${n.freq} mentions, ${n.adj.length} links</div><ul>${c.map(a=>{const e=edges[a.e];return `<li><span>${e.s===sel?'→':'←'} ${nodes[a.j].word}</span><span class="w">${e.w.toFixed(2)}</span></li>`;}).join('')}</ul>`;
+  }else if(Q&&Q.top){
+    $info.style.display='block';
+    $info.innerHTML=`<h2>Query</h2><div>${Q.terms.join(', ')}</div><ul>${Q.top.slice(0,10).map(i=>`<li><span>${nodes[i].word}</span><span class="w">${Q.A[i].toFixed(2)}</span></li>`).join('')}</ul>`;
+  }else $info.style.display='none';
+  hud();
+}
+async function load(files){
+  const docs=[];for(const f of files)docs.push({name:f.name,text:await f.text()});
+  ingest(docs);
+}
+function ingest(docs){
+  stat('Building field…');
+  setTimeout(()=>{
+    resetCorpus();docs.forEach(d=>corp.push(encode(d.text)));foldPlurals();recount();docCount=docs.length;buildField();
+    if(nodes.length<3){stat('Not enough repeated concepts. Attach longer text.');return;}
+    buildVisuals();stat(summary());
+  },30);
+}
+$('#file').addEventListener('change',e=>load(e.target.files));
+addEventListener('dragover',e=>e.preventDefault());
+addEventListener('drop',e=>{e.preventDefault();load(e.dataTransfer.files);});
+$('#qf').addEventListener('submit',e=>{e.preventDefault();runQuery($q.value);});
+$('#clr').onclick=clearAll;
+$('#demo').onclick=()=>ingest([{name:'demo',text:`The ocean absorbs heat from the atmosphere, and warming seawater expands, raising sea level along every coastline.
+Rising sea level threatens coastal cities, flooding harbors and eroding beaches. Coastal cities must build seawalls and restore wetlands to absorb storm surge.
+
+Warming ocean water drives stronger hurricanes. Hurricanes fed by warm seawater bring storm surge, flooding and damage to coastal communities.
+
+Carbon emissions from fossil fuels trap heat in the atmosphere. Reducing carbon emissions requires solar energy, wind energy and battery storage to replace fossil fuels.
+
+Solar energy and wind energy are growing quickly as costs fall. Battery storage stabilizes the electric grid when wind slows or the sun sets.
+
+The ocean also absorbs carbon, which acidifies seawater. Ocean acidification harms coral reefs and shellfish, and warming seawater bleaches coral reefs, damaging fisheries and coastal communities.
+
+Wetlands and forests store carbon. Restoring forests and wetlands reduces carbon in the atmosphere while protecting coastal cities from flooding.`}]);
+
+/* ---------- VR HUD ---------- */
+const hc=document.createElement('canvas');hc.width=512;hc.height=128;
+const hs=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(hc),transparent:true,depthTest:false}));
+hs.scale.set(.5,.125,1);hs.position.set(0,-.25,-.8);hs.renderOrder=20;hs.visible=false;camera.add(hs);
+function hud(){
+  const x=hc.getContext('2d');x.clearRect(0,0,512,128);x.fillStyle='rgba(3,16,28,.7)';x.fillRect(0,0,512,128);
+  x.strokeStyle='#5df0ff';x.strokeRect(1,1,510,126);x.font='600 28px "Chakra Petch",system-ui,sans-serif';
+  x.fillStyle=sel>=0?'#ffb347':'#5df0ff';
+  x.fillText(sel>=0?nodes[sel].word:(Q&&Q.terms?'Query: '+Q.terms.join(' '):'Concept field'),16,44);
+  x.font='20px "Chakra Petch",system-ui,sans-serif';x.fillStyle='#d6f6ff';
+  x.fillText(sel>=0?`${nodes[sel].adj.length} links · A adds to query · B clears`:(nodes.length?nodes.length+' concepts · pinch to select':'Load text before entering VR'),16,84);
+  hs.material.map.needsUpdate=true;
+}
+hud();
+
+/* ---------- desktop picking & flying ---------- */
+const ray=new THREE.Raycaster(),tmp=new THREE.Vector3(),keys={};
+function pick(o,d,maxAng){
+  let best=-1,ba=maxAng;
+  for(const i of visible){
+    tmp.set(nodes[i].x,nodes[i].y,nodes[i].z).applyMatrix4(G.matrixWorld).sub(o);
+    const t=tmp.dot(d);if(t<=.02)continue;
+    const a=Math.sqrt(Math.max(0,tmp.lengthSq()-t*t))/t;
+    if(a<ba){ba=a;best=i;}
+  }
+  return best;
+}
+let down=null;
+renderer.domElement.addEventListener('pointerdown',e=>down=[e.clientX,e.clientY]);
+renderer.domElement.addEventListener('pointerup',e=>{
+  if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>4||!nodes.length)return;
+  ray.setFromCamera(new THREE.Vector2(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1),camera);
+  const i=pick(ray.ray.origin,ray.ray.direction,.02);
+  if(i>=0)select(i);else if(sel>=0){sel=-1;applyState();}
+});
+addEventListener('keydown',e=>{if(document.activeElement!==$q)keys[e.code]=true;});
+addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+
+/* ---------- VR: hands, controllers, sticks ---------- */
+document.body.appendChild(VRButton.createButton(renderer));
+const hf=new XRHandModelFactory(),cf=new XRControllerModelFactory(),rig=[];
+for(let i=0;i<2;i++){
+  const c=renderer.xr.getController(i),gr=renderer.xr.getControllerGrip(i),h=renderer.xr.getHand(i);
+  const rl=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-.8)]),new THREE.LineBasicMaterial({color:0x5df0ff,transparent:true,opacity:.5,blending:THREE.AdditiveBlending}));
+  c.add(rl);c.userData={on:false,sq:false,isHand:false};
+  c.addEventListener('connected',e=>{c.userData.on=true;c.userData.isHand=!!e.data.hand;});
+  c.addEventListener('disconnected',()=>c.userData.on=false);
+  c.addEventListener('squeezestart',()=>c.userData.sq=true);c.addEventListener('squeezeend',()=>c.userData.sq=false);
+  c.addEventListener('selectstart',e=>{if(e.data.hand||!nodes.length)return;
+    const o=c.getWorldPosition(new THREE.Vector3()),d=new THREE.Vector3(0,0,-1).applyQuaternion(c.getWorldQuaternion(new THREE.Quaternion()));
+    const k=pick(o,d,.06);if(k>=0)select(k);else if(sel>=0){sel=-1;applyState();}});
+  h.userData={on:false};h.addEventListener('connected',()=>h.userData.on=true);h.addEventListener('disconnected',()=>h.userData.on=false);
+  gr.add(cf.createControllerModel(gr));h.add(hf.createHandModel(h,'spheres'));
+  dolly.add(c,gr,h);rig.push({c,h,pin:false,prev:false});
+}
+renderer.xr.addEventListener('sessionstart',()=>{controls.enabled=false;hs.visible=true;U.uH.value=1600;hud();});
+renderer.xr.addEventListener('sessionend',()=>{controls.enabled=true;hs.visible=false;dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);camera.position.set(0,1.6,.9);controls.target.copy(G.position);controls.update();});
+
+const Y=new THREE.Vector3(0,1,0);let mode='none',gi=-1,g0={},g1={},grabbing=false,prevBtn={};
+function handPoint(r){
+  const j=r.h.joints,ti=j['thumb-tip'],ix=j['index-finger-tip'];
+  if(r.h.userData.on&&ti&&ix&&ti.jointRadius!==undefined){
+    const a=ti.getWorldPosition(new THREE.Vector3()),b=ix.getWorldPosition(new THREE.Vector3()),d=a.distanceTo(b);
+    r.pin=d<(r.pin?.035:.022);return a.add(b).multiplyScalar(.5);
+  }
+  if(r.c.userData.on&&!r.c.userData.isHand){r.pin=r.c.userData.sq;return r.c.getWorldPosition(new THREE.Vector3());}
+  r.pin=false;return null;
+}
+function nearestWorld(p,rad){
+  let best=-1,bd=rad;
+  for(const i of visible){tmp.set(nodes[i].x,nodes[i].y,nodes[i].z).applyMatrix4(G.matrixWorld);const d=tmp.distanceTo(p);if(d<bd){bd=d;best=i;}}
+  return best;
+}
+function gestures(dt){
+  const P=rig.map(handPoint),act=[0,1].filter(i=>P[i]&&rig[i].pin);
+  if(act.length===2){
+    const a=P[0],b=P[1],d=a.distanceTo(b),M=a.clone().add(b).multiplyScalar(.5),ang=Math.atan2(b.x-a.x,b.z-a.z);
+    if(mode!=='two'){g0={d,ang,M,P:G.position.clone(),s:G.scale.x,q:G.quaternion.clone()};mode='two';}
+    else{
+      const s=THREE.MathUtils.clamp(g0.s*d/g0.d,.03,15),R=new THREE.Quaternion().setFromAxisAngle(Y,ang-g0.ang);
+      G.scale.setScalar(s);G.quaternion.copy(R).multiply(g0.q);
+      G.position.copy(M).add(g0.P.clone().sub(g0.M).applyQuaternion(R).multiplyScalar(s/g0.s));
+    }
+  }else if(act.length===1){
+    const i=act[0],p=P[i];
+    if(mode!=='one'||gi!==i){
+      const wasTwo=mode==='two';mode='one';gi=i;grabbing=true;
+      if(!wasTwo&&nodes.length){
+        G.updateMatrixWorld(true);
+        let k=nearestWorld(p,.06);
+        if(k<0){const o=rig[i].c.getWorldPosition(new THREE.Vector3()),d=new THREE.Vector3(0,0,-1).applyQuaternion(rig[i].c.getWorldQuaternion(new THREE.Quaternion()));k=pick(o,d,.05);}
+        if(k>=0){select(k);grabbing=false;}
+        else if(sel>=0&&rig[i].c.userData.isHand===false){}
+      }
+      g1={p:p.clone(),P:G.position.clone()};
+    }else if(grabbing)G.position.copy(g1.P).add(p.clone().sub(g1.p));
+  }else mode='none';
+}
+function sticks(dt){
+  const s=renderer.xr.getSession();if(!s)return;
+  const fwd=renderer.xr.getCamera().getWorldDirection(new THREE.Vector3());fwd.y=0;fwd.normalize();
+  const side=new THREE.Vector3().crossVectors(fwd,Y);
+  for(const src of s.inputSources){
+    const gp=src.gamepad;if(!gp||src.hand)continue;
+    const ax=gp.axes.length>=4?[gp.axes[2],gp.axes[3]]:[gp.axes[0],gp.axes[1]];
+    const dz=v=>Math.abs(v)<.15?0:v;
+    if(src.handedness==='left'){
+      dolly.position.addScaledVector(fwd,-dz(ax[1])*dt*1.2).addScaledVector(side,dz(ax[0])*dt*1.2);
+    }else{
+      dolly.rotation.y-=dz(ax[0])*dt*1.5;dolly.position.y-=dz(ax[1])*dt*1;
+      const a=gp.buttons[4]?.pressed,b=gp.buttons[5]?.pressed;
+      if(a&&!prevBtn.a&&sel>=0){const t=($q.value+' '+nodes[sel].word).trim();$q.value=t;runQuery(t);}
+      if(b&&!prevBtn.b)clearAll();
+      prevBtn={a,b};
+    }
+  }
+}
+/* ---------- loop ---------- */
+const clock=new THREE.Clock();
+renderer.setAnimationLoop(()=>{
+  const dt=Math.min(clock.getDelta(),.05);U.uT.value+=dt;
+  G.updateMatrixWorld(true);
+  if(renderer.xr.isPresenting){gestures(dt);sticks(dt);}
+  else{
+    U.uH.value=renderer.domElement.height;
+    const v=new THREE.Vector3(),sp=dt*1.2;
+    if(keys.KeyW||keys.KeyS||keys.KeyA||keys.KeyD||keys.KeyQ||keys.KeyE){
+      camera.getWorldDirection(v);const r=new THREE.Vector3().crossVectors(v,Y).normalize(),m=new THREE.Vector3();
+      if(keys.KeyW)m.add(v);if(keys.KeyS)m.sub(v);if(keys.KeyD)m.add(r);if(keys.KeyA)m.sub(r);if(keys.KeyE)m.y+=1;if(keys.KeyQ)m.y-=1;
+      m.multiplyScalar(sp);camera.position.add(m);controls.target.add(m);
+    }
+    controls.update();
+  }
+  renderer.render(scene,camera);
+});
 </script>
 </body>
 </html>
