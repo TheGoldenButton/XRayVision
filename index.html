@@ -70,7 +70,7 @@ body.hopen #hint{display:none}
     <button id="vr" hidden>Enter VR</button>
     <button id="ar" hidden style="color:var(--am);border-color:var(--am)">Enter mixed reality</button>
   </div>
-  <form id="qf" class="row"><input id="q" type="text" placeholder="Ask about your text, e.g. how does heat affect the ocean?" autocomplete="off"><button type="submit">Ask</button><button type="button" id="mic" hidden>Voice</button></form>
+  <form id="qf" class="row"><input id="q" type="text" placeholder="Ask about your text, e.g. how does heat affect the ocean?" autocomplete="off" enterkeyhint="search" autocapitalize="off"><button type="submit">Ask</button></form>
   <div class="row"><button id="clr">Clear query &amp; selection</button><button id="ctx" title="Remove the attached text and its saved copy">Clear text</button><button id="hbtn">History</button></div>
   <div id="stat">Attach one or more text files to build the field.</div>
 </div>
@@ -80,7 +80,7 @@ body.hopen #hint{display:none}
   <input id="hf" type="text" placeholder="Filter by word or query…" autocomplete="off">
   <div id="hbody"></div>
 </div>
-<div id="hint" class="panel">Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click a concept to select. VR: a query bar and keyboard float at the bottom of your view (point and pinch or trigger the bar to type). Mixed reality (Quest 3): press Enter mixed reality to see your room through the passthrough cameras. Pinch and drag anywhere to move the data sphere, pinch with both hands and spread to resize, quick pinch on a concept to select it. Sticks fly in VR. A adds the selected concept to the query, B clears. Press Place on the panel to snap the field onto a wall, table or floor.</div>
+<div id="hint" class="panel">Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click a concept to select. Type your question in the box above; your device keyboard (and its dictation mic) works as usual. VR: a status and query strip plus a results box float in view. Tap the query strip to type (it opens the page so the system keyboard can be used) and re-enter afterwards. Mixed reality (Quest 3): press Enter mixed reality to see your room. Pinch and drag to move the data sphere, pinch with both hands and spread to resize, quick pinch on a concept to select it. The field remembers where you put it between sessions. Sticks fly in VR. A adds the selected concept to the query, B clears. Press Place to snap the field onto a wall, table or floor. Lines glow brighter and warmer the more strongly they connect to your query or selection.</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -411,12 +411,12 @@ function buildVisuals(){
 let visible=[],forcedSet=new Set();
 function applyState(){
   const N=nodes.length,E=edges.length;if(!N)return;
-  const nI=new Float32Array(N),ni=new Float32Array(N),ei=new Float32Array(E),ec=new Uint8Array(E),nc=new Uint8Array(N);
+  const nI=new Float32Array(N),ni=new Float32Array(N),ei=new Float32Array(E),ec=new Uint8Array(E),nc=new Uint8Array(N),er=new Float32Array(E),ea=new Float32Array(N).fill(1);
   const labs=[];
   for(let i=0;i<N;i++){ni[i]=nodes[i].nf;}
   if(Q&&Q.A){
-    for(let i=0;i<N;i++){nI[i]=Q.show[i]?(.25+.75*Q.A[i])*(.8+.2*ni[i]):.14;nc[i]=Q.show[i]?1:0;}
-    for(let e=0;e<E;e++){ei[e]=Q.eI[e];ec[e]=Q.eI[e]>.09?1:0;}
+    for(let i=0;i<N;i++){nI[i]=Q.show[i]?(.25+.75*Q.A[i])*(.8+.2*ni[i]):.14;nc[i]=Q.show[i]?1:0;ea[i]=Q.show[i]?.35+.65*Q.A[i]:.2;}
+    for(let e=0;e<E;e++){ei[e]=Q.eI[e];ec[e]=Q.eI[e]>.09?1:0;er[e]=Math.max(0,Math.min(1,(Q.eI[e]-.09)/.95));}
     Q.top.slice(0,35).forEach(i=>labs.push([i,1]));
   }else{
     for(let i=0;i<N;i++)nI[i]=.55+.9*Math.pow(ni[i],1);
@@ -425,10 +425,19 @@ function applyState(){
   }
   const pre=nI.slice();
   if(sel>=0){
-    for(let i=0;i<N;i++)nI[i]*=.55;for(let e=0;e<E;e++)ei[e]=Math.max(ei[e]*.6,.04);
+    for(let i=0;i<N;i++)nI[i]*=.55;for(let e=0;e<E;e++){ei[e]=Math.max(ei[e]*.35,.025);er[e]=0;}
+    ea.fill(.3);ea[sel]=1;
     nI[sel]=1.3;nc[sel]=2;labs.length=0;labs.push([sel,1]);
-    nodes[sel].adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w).forEach((a,r)=>{
-      nI[a.j]=.95;nc[a.j]=3;ei[a.e]=.45+.8*edges[a.e].wn;ec[a.e]=2;if(r<24)labs.push([a.j,0]);});
+    const ad=nodes[sel].adj,mxw=Math.max(1e-6,...ad.map(a=>edges[a.e].w)),isN=new Map();
+    ad.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w).forEach((a,r)=>{
+      const rel=edges[a.e].w/mxw; // 0..1: how strongly this neighbour connects to the selection
+      isN.set(a.j,rel);nI[a.j]=.5+.5*rel;nc[a.j]=3;ea[a.j]=.45+.55*rel;
+      ei[a.e]=.12+1.0*Math.pow(rel,1.2)*(.5+.5*edges[a.e].wn);ec[a.e]=2;er[a.e]=rel;if(r<24)labs.push([a.j,0]);});
+    edges.forEach((e,k)=>{if(ec[k]===2)return;
+      const ra=isN.get(e.s),rb=isN.get(e.t);
+      if(ra!==undefined&&rb!==undefined){ei[k]=.08+.3*Math.min(ra,rb)*(.4+.6*e.wn);ec[k]=4;} // links among the neighbours
+      else if(ra!==undefined||rb!==undefined){ei[k]=.04+.1*(ra!==undefined?ra:rb)*e.wn;}   // second hop: barely lit
+    });
   }
   visible=[];
   for(let i=0;i<N;i++){
@@ -438,11 +447,11 @@ function applyState(){
   }
   const flowQ=Q&&Q.A,aT=lines.geometry.attributes.aT;
   edges.forEach((e,k)=>{
-    const col=ec[k]===2?WH:ec[k]===1?AM:CY;
-    eI[k*2]=eI[k*2+1]=ei[k];eC.set(col,k*6);eC.set(col,k*6+3);
+    const col=ec[k]===2?mix(CY,WH,er[k]):ec[k]===1?mix(CY,AM,er[k]):CY;
+    eI[k*2]=ei[k]*ea[e.s];eI[k*2+1]=ei[k]*ea[e.t];eC.set(col,k*6);eC.set(col,k*6+3);
     const dir=flowQ&&Q.A[e.s]<Q.A[e.t]?1:0;
     aT.array[k*2]=dir;aT.array[k*2+1]=1-dir;
-    const act=sel>=0?(ec[k]===2?.6:0):(flowQ&&ei[k]>.12?ei[k]:0);
+    const act=sel>=0?(ec[k]===2?.3+.6*er[k]:ec[k]===4?.16:0):(flowQ&&ei[k]>.12?ei[k]:0);
     const dc=flowQ?[1,.92,.62]:[.8,1,1];
     for(let m=0;m<PN;m++){const q=k*PN+m;dI[q]=act;dD[q]=dir;dC.set(dc,q*3);}
   });
@@ -512,76 +521,95 @@ addEventListener('dragover',e=>e.preventDefault());
 addEventListener('drop',e=>{e.preventDefault();load(e.dataTransfer.files);});
 $('#qf').addEventListener('submit',e=>{e.preventDefault();runQuery($q.value);});
 $('#clr').onclick=clearAll;
-/* ---------- XR panel: status strip, query bar and keyboard, kept low in view ---------- */
-let needCenter=false,arMode=false,placing=false,placedOnce=false,arScale=null,lastHit=false,reqLook=null,sessAR=false,centerS=.3,xrNote='';
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let listening=false,vRec=null,vFinal=false,vErr=false;
+/* ---------- XR panels: a query/status strip and a results box, both kept in view ---------- */
+let needCenter=false,arMode=false,placing=false,placedOnce=false,arScale=null,lastHit=false,reqLook=null,sessAR=false,centerS=.3,xrNote='',domOv=false,pendingType=false;
 let hudA='Concept field',hudB='';
-const KW=1024,KH=456,KEYS=[];
+const KW=1024,KH=150,KEYS=[];
 const kc=document.createElement('canvas');kc.width=KW;kc.height=KH;
 const kctx=kc.getContext('2d'),ktex=new THREE.CanvasTexture(kc);ktex.colorSpace=THREE.SRGBColorSpace;ktex.anisotropy=4;
 const kb=new THREE.Mesh(new THREE.PlaneGeometry(.64,.64*KH/KW),new THREE.MeshBasicMaterial({map:ktex,transparent:true,depthTest:false}));
 kb.renderOrder=30;kb.visible=false;kb.frustumCulled=false;scene.add(kb);
-let kDirty=true,kbOpen=false,pressK=null,pressT=0,lastPh=0,hsig='';
+/* results box: the same words the 2D info panel shows (selection's neighbours, or the query's top words), with connectivity bars */
+const IW=640,IH=700;
+const ic=document.createElement('canvas');ic.width=IW;ic.height=IH;
+const ictx=ic.getContext('2d'),itex=new THREE.CanvasTexture(ic);itex.colorSpace=THREE.SRGBColorSpace;itex.anisotropy=4;
+const ib=new THREE.Mesh(new THREE.PlaneGeometry(.4,.4*IH/IW),new THREE.MeshBasicMaterial({map:itex,transparent:true,depthTest:false}));
+ib.renderOrder=30;ib.visible=false;ib.frustumCulled=false;scene.add(ib);
+let kDirty=true,iDirty=true,pressK=null,pressT=0,hsig='',infoCache=null;
 function hud(){
   hudA=sel>=0?nodes[sel].word:(Q&&Q.terms?'Query: '+Q.terms.join(' '):'Concept field');
   hudB=xrNote||(sel>=0?`${nodes[sel].adj.length} links · A adds to query · B clears`:(nodes.length?nodes.length+' concepts · pinch to select':'Load text before entering VR'));
-  kDirty=true;
+  kDirty=true;iDirty=true;
+}
+function infoData(){
+  if(sel>=0){
+    const n=nodes[sel],c=n.adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w).slice(0,10),mx=Math.max(1e-6,...c.map(a=>edges[a.e].w));
+    return {t:n.word,s:`${n.freq} mentions, ${n.adj.length} links`,rows:c.map(a=>{const e=edges[a.e];return {l:(e.s===sel?'\u2192 ':'\u2190 ')+nodes[a.j].word,v:e.w/mx,n:e.w.toFixed(2)};})};
+  }
+  if(Q&&Q.top)return {t:'Query',s:Q.terms.join(', '),rows:Q.top.slice(0,10).map(i=>({l:nodes[i].word,v:Q.A[i],n:Q.A[i].toFixed(2)}))};
+  return null;
 }
 (function buildKeys(){
-  KEYS.push({id:'field',x:12,y:66,w:516,h:70,act:'open'},{label:'Ask',x:538,y:66,w:84,h:70,act:'ask'},
-    {label:'Clear',x:632,y:66,w:84,h:70,act:'clear'},{id:'mode',x:726,y:66,w:138,h:70,act:'mode'},{id:'place',x:874,y:66,w:138,h:70,act:'place'},
-    {id:'mic',x:844,y:8,w:92,h:44,act:'mic'},{id:'toggle',x:944,y:8,w:68,h:44,act:'toggle'});
-  const u=78,g=6,rows=[
-    [...'1234567890'].map(c=>[c,1]).concat([['\u232b',1.6,'bs']]),
-    [...'qwertyuiop'].map(c=>[c,1]),
-    [...'asdfghjkl'].map(c=>[c,1]).concat([["'",1]]),
-    [...'zxcvbnm'].map(c=>[c,1]).concat([['-',1],[',',1],['.',1]]),
-    [['space',7.2,'sp'],['Ask',2.8,'ask']]];
-  rows.forEach((row,ri)=>{const tw=row.reduce((s,k)=>s+k[1]*u,0)+g*(row.length-1);let x=(KW-tw)/2;const y=146+ri*62;
-    row.forEach(([l,w,a])=>{KEYS.push({label:l,x,y,w:w*u,h:56,act:a||'ch',kbk:true});x+=w*u+g;});});
+  KEYS.push({id:'field',x:12,y:66,w:600,h:70,act:'type'},{label:'Clear',x:622,y:66,w:110,h:70,act:'clear'},
+    {id:'mode',x:742,y:66,w:130,h:70,act:'mode'},{id:'place',x:882,y:66,w:130,h:70,act:'place'});
 })();
 function rr(x,a,b,w,h,r){x.beginPath();if(x.roundRect)x.roundRect(a,b,w,h,r);else x.rect(a,b,w,h);}
+const FNT='"Chakra Petch",system-ui,sans-serif';
 function drawKB(){
-  const x=kctx,ext=kbOpen?KH:140,F='"Chakra Petch",system-ui,sans-serif';
+  const x=kctx,F=FNT;
   x.clearRect(0,0,KW,KH);
-  rr(x,0,0,KW,ext,16);x.fillStyle='rgba(3,16,28,.88)';x.fill();
-  rr(x,1.5,1.5,KW-3,ext-3,16);x.strokeStyle='rgba(93,240,255,.65)';x.lineWidth=3;x.stroke();
+  rr(x,0,0,KW,KH,16);x.fillStyle='rgba(3,16,28,.88)';x.fill();
+  rr(x,1.5,1.5,KW-3,KH-3,16);x.strokeStyle='rgba(93,240,255,.65)';x.lineWidth=3;x.stroke();
   x.textBaseline='middle';x.textAlign='left';
   x.font='600 28px '+F;x.fillStyle=sel>=0?'#ffb347':'#5df0ff';
   let a=hudA;if(a.length>30)a=a.slice(0,29)+'\u2026';x.fillText(a,20,32);
   const aw=x.measureText(a).width;x.font='20px '+F;x.fillStyle='rgba(214,246,255,.85)';
-  x.fillText(hudB,36+aw,33,Math.max(60,835-aw-36));
+  x.fillText(hudB,36+aw,33,Math.max(60,KW-36-aw-20));
   const hov=new Set(rig.map(r=>r.hk).filter(Boolean)),now=performance.now();
   for(const k of KEYS){
-    if(k.kbk&&!kbOpen)continue;
     const on=hov.has(k),fl=pressK===k&&now-pressT<170;
     if(k.id==='field'){
-      rr(x,k.x,k.y,k.w,k.h,8);x.fillStyle='rgba(0,0,0,.55)';x.fill();x.strokeStyle=on||kbOpen?'#ffb347':'rgba(93,240,255,.5)';x.lineWidth=2;x.stroke();
-      x.font='600 30px '+F;x.textAlign='left';const t=$q.value,mw=k.w-40;let s=t;
+      rr(x,k.x,k.y,k.w,k.h,8);x.fillStyle='rgba(0,0,0,.55)';x.fill();x.strokeStyle=on?'#ffb347':'rgba(93,240,255,.5)';x.lineWidth=2;x.stroke();
+      x.font='600 28px '+F;x.textAlign='left';const t=$q.value,mw=k.w-40;let s=t;
       while(s.length&&x.measureText(s).width>mw)s=s.slice(1);
-      if(!t){x.fillStyle='rgba(214,246,255,.4)';x.fillText('Ask about your text\u2026',k.x+16,k.y+k.h/2+1);}
+      if(!t){x.fillStyle='rgba(214,246,255,.4)';x.fillText('Tap to type a question\u2026',k.x+16,k.y+k.h/2+1);}
       else{x.fillStyle='#d6f6ff';x.fillText(s,k.x+16,k.y+k.h/2+1);}
-      if(kbOpen&&Math.floor(now/500)%2===0){const cx=k.x+16+(t?x.measureText(s).width:0)+3;x.fillStyle='#ffb347';x.fillRect(cx,k.y+16,3,k.h-32);}
       continue;
     }
     rr(x,k.x,k.y,k.w,k.h,8);
-    x.fillStyle=(fl||(k.id==='mic'&&listening))?'rgba(255,179,71,.6)':on?'rgba(93,240,255,.4)':'rgba(93,240,255,.1)';x.fill();
+    x.fillStyle=fl?'rgba(255,179,71,.6)':on?'rgba(93,240,255,.4)':'rgba(93,240,255,.1)';x.fill();
     x.strokeStyle=on?'#5df0ff':'rgba(93,240,255,.4)';x.lineWidth=2;x.stroke();
-    x.globalAlpha=((k.id==='mode'&&!sessAR)||(k.id==='mic'&&!SR))?.4:1;
-    const lab=k.id==='mic'?(listening?'Stop':'Voice'):k.id==='mode'?(sessAR?(arMode?'To VR':'To MR'):'VR only'):k.id==='place'?(arMode?'Place':'Recenter'):k.id==='toggle'?(kbOpen?'hide':'keys'):k.label;
-    x.font=(k.kbk?'600 30px ':'600 24px ')+F;x.fillStyle=k.act==='ask'?'#ffb347':'#d6fbff';x.textAlign='center';
+    x.globalAlpha=(k.id==='mode'&&!sessAR)?.4:1;
+    const lab=k.id==='mode'?(sessAR?(arMode?'To VR':'To MR'):'VR only'):k.id==='place'?(arMode?'Place':'Recenter'):k.label;
+    x.font='600 24px '+F;x.fillStyle='#d6fbff';x.textAlign='center';
     x.fillText(lab,k.x+k.w/2,k.y+k.h/2+1);x.globalAlpha=1;
   }
 }
+function drawInfo(){
+  const x=ictx,d=infoCache,F=FNT,n=d.rows.length,h=104+n*52+16;
+  x.clearRect(0,0,IW,IH);
+  rr(x,0,0,IW,h,16);x.fillStyle='rgba(3,16,28,.88)';x.fill();
+  rr(x,1.5,1.5,IW-3,h-3,16);x.strokeStyle='rgba(93,240,255,.65)';x.lineWidth=3;x.stroke();
+  x.textBaseline='middle';x.textAlign='left';
+  x.font='600 44px '+F;x.fillStyle='#ffb347';x.fillText(d.t.length>18?d.t.slice(0,17)+'\u2026':d.t,28,46);
+  x.font='22px '+F;x.fillStyle='rgba(214,246,255,.75)';x.fillText(d.s,28,84,IW-56);
+  d.rows.forEach((r,i)=>{
+    const y=130+i*52,bx=352,bw=190,v=Math.max(0,Math.min(1,r.v));
+    x.textAlign='left';x.font='600 28px '+F;x.fillStyle='#d6f6ff';x.fillText(r.l,28,y,310);
+    rr(x,bx,y-7,bw,14,7);x.fillStyle='rgba(93,240,255,.15)';x.fill();
+    rr(x,bx,y-7,Math.max(10,bw*v),14,7);x.fillStyle=`rgb(${Math.round(93+162*v)},${Math.round(240-61*v)},${Math.round(255-184*v)})`;x.fill();
+    x.font='20px '+F;x.textAlign='right';x.fillStyle='rgba(214,246,255,.7)';x.fillText(r.n,IW-24,y);
+  });
+  x.textAlign='left';
+}
 function drawKBIfDirty(){
-  if(!kb.visible)return;
-  const ph=Math.floor(performance.now()/500)%2;if(kbOpen&&ph!==lastPh){lastPh=ph;kDirty=true;}
   if(pressK&&performance.now()-pressT>175){pressK=null;kDirty=true;}
-  if(kDirty){drawKB();ktex.needsUpdate=true;kDirty=false;}
+  if(kb.visible&&kDirty){drawKB();ktex.needsUpdate=true;kDirty=false;}
+  if(iDirty){iDirty=false;infoCache=infoData();ib.visible=kb.visible&&!!infoCache;if(infoCache){drawInfo();itex.needsUpdate=true;}}
 }
 function keyAt(px,py){
-  if(px<0||px>KW||py<0||py>(kbOpen?KH:140))return null;
-  const k=KEYS.find(k=>(!k.kbk||kbOpen)&&px>=k.x-3&&px<=k.x+k.w+3&&py>=k.y-3&&py<=k.y+k.h+3);
+  if(px<0||px>KW||py<0||py>KH)return null;
+  const k=KEYS.find(k=>px>=k.x-3&&px<=k.x+k.w+3&&py>=k.y-3&&py<=k.y+k.h+3);
   return {k:k||null};
 }
 const rc=new THREE.Raycaster(),_o=new THREE.Vector3(),_d=new THREE.Vector3(),_q=new THREE.Quaternion();
@@ -592,23 +620,22 @@ function panelHit(c){
   const h=rc.intersectObject(kb,false)[0];if(!h||!h.uv)return null;
   return keyAt(h.uv.x*KW,(1-h.uv.y)*KH);
 }
+/* typing uses the device's own keyboard (with its dictation mic). Inside a session that works only where the browser offers a DOM overlay;
+   otherwise we leave the session, focus the box, and the field comes back where it was when you re-enter */
+function typeInPage(){
+  if(domOv){try{$q.focus();}catch(e){}xrNote='Type in the box, then press Ask';hud();return;}
+  pendingType=true;const s=renderer.xr.getSession();if(s)s.end();
+}
 function keyAct(k,r){
-  const t=$q.value;
-  if(k.act==='ch'){if(t.length<120)$q.value=t+k.label;}
-  else if(k.act==='sp'){if(t.length<120)$q.value=t+' ';}
-  else if(k.act==='bs')$q.value=t.slice(0,-1);
-  else if(k.act==='open')kbOpen=true;
-  else if(k.act==='toggle')kbOpen=!kbOpen;
-  else if(k.act==='ask'){if($q.value.trim()){runQuery($q.value);kbOpen=false;}}
+  if(k.act==='type')typeInPage();
   else if(k.act==='clear')clearAll();
-  else if(k.act==='mic')voice();
   else if(k.act==='mode'){if(sessAR)switchLook(!arMode);}
   else if(k.act==='place'){if(arMode)beginPlacing();else{kInit=false;recoverField(true);}}
   kDirty=true;pressK=k;pressT=performance.now();
   try{r.c.userData.src?.gamepad?.hapticActuators?.[0]?.pulse(.35,30);}catch(e){}
 }
-/* lazy-follow: panel stays at a fixed spot below the eyes, turning only when you turn well away from it */
-const _h=new THREE.Vector3(),_f=new THREE.Vector3(),_t=new THREE.Vector3();let kYaw=0,kInit=false,kMove=false;
+/* lazy-follow: panels stay at a fixed spot below/beside the eyes, turning only when you turn well away from them */
+const _h=new THREE.Vector3(),_f=new THREE.Vector3(),_t=new THREE.Vector3(),_t2=new THREE.Vector3();let kYaw=0,kInit=false,kMove=false;
 function placeKB(dt){
   const xc=renderer.xr.getCamera();xc.getWorldPosition(_h);xc.getWorldDirection(_f);_f.y=0;
   if(_f.lengthSq()>1e-4){
@@ -617,9 +644,11 @@ function placeKB(dt){
     if(Math.abs(df)>.75)kMove=true;if(Math.abs(df)<.05)kMove=false;
     if(kMove)kYaw+=df*Math.min(1,dt*3);
   }
-  _t.set(_h.x-Math.sin(kYaw)*.5,_h.y-.42,_h.z-Math.cos(kYaw)*.5);
-  if(!kInit)kb.position.copy(_t);else kb.position.lerp(_t,Math.min(1,dt*8));
-  kInit=true;kb.rotation.set(-.7,kYaw,0,'YXZ');kb.updateMatrixWorld(true);
+  const sy=Math.sin(kYaw),cy=Math.cos(kYaw);
+  _t.set(_h.x-sy*.5,_h.y-.42,_h.z-cy*.5);
+  _t2.set(_h.x-sy*.8+cy*.45,_h.y-.08,_h.z-cy*.8-sy*.45);
+  if(!kInit){kb.position.copy(_t);ib.position.copy(_t2);}else{const a=Math.min(1,dt*8);kb.position.lerp(_t,a);ib.position.lerp(_t2,a);}
+  kInit=true;kb.rotation.set(-.7,kYaw,0,'YXZ');ib.rotation.set(0,kYaw-.35,0,'YXZ');kb.updateMatrixWorld(true);ib.updateMatrixWorld(true);
 }
 function uiStep(){
   rig.forEach(r=>{
@@ -695,6 +724,76 @@ function arFrame(frame){
 }
 hud();
 
+/* ---------- AR persistence: the field stays where you put it, across sessions ----------
+   Preferred: a persistent spatial anchor (survives re-entering and tracks the real room). Fallback: the raw pose in localStorage. */
+const AR_KEY='cf.ar';
+let arSaved=null,arAnchor=null,arRest=0,arRestT=0,arDirty=false,arSettle=0,arBusy=false,arLast=null;
+try{arSaved=JSON.parse(localStorage.getItem(AR_KEY)||'null');}catch(e){}
+if(!arSaved||!Array.isArray(arSaved.p)||!Array.isArray(arSaved.q)||!isFinite(arSaved.s)||![...arSaved.p,...arSaved.q].every(isFinite))arSaved=null;
+const arPose=()=>[G.position.x,G.position.y,G.position.z,G.quaternion.x,G.quaternion.y,G.quaternion.z,G.quaternion.w,G.scale.x];
+const arDiff=(a,b)=>!a||!b||a.some((v,i)=>Math.abs(v-b[i])>(i===7?.002:.003));
+const arWrite=()=>{try{localStorage.setItem(AR_KEY,JSON.stringify(arSaved));}catch(e){}};
+function arBegin(){ // returns true when a saved placement will be restored instead of auto-centring
+  arAnchor=null;arLast=null;arDirty=false;arSettle=0;arBusy=false;
+  if(arSaved&&nodes.length){arRest=1;arRestT=0;G.visible=false;G.scale.setScalar(THREE.MathUtils.clamp(arSaved.s,.08,8));needCenter=false;return true;}
+  arRest=0;return false;
+}
+function arFinish(){arRest=0;G.visible=true;arLast=arPose();}
+function arFallback(){
+  const sv=arSaved;arRest=0;G.visible=true;
+  if(sv){G.position.fromArray(sv.p);G.quaternion.fromArray(sv.q);G.scale.setScalar(THREE.MathUtils.clamp(sv.s,.08,8));}
+  arLast=arPose();if(fieldBad())recoverField(true);
+}
+async function arRestore(s){
+  const sv=arSaved;
+  if(sv&&sv.uuid&&s.restorePersistentAnchor){
+    try{const a=await s.restorePersistentAnchor(sv.uuid);if(a&&arRest===2){arAnchor=a;arRest=3;return;}}catch(e){}
+  }
+  if(arRest===2)arFallback();
+}
+function arAnchorPose(frame,ref){
+  const set=frame.trackedAnchors;if(!arAnchor||!set||!set.has(arAnchor))return null;
+  const p=frame.getPose(arAnchor.anchorSpace,ref);return p&&p.transform;
+}
+function arApply(t){G.position.set(t.position.x,t.position.y,t.position.z);G.quaternion.set(t.orientation.x,t.orientation.y,t.orientation.z,t.orientation.w);arLast=arPose();}
+function arCommit(frame){
+  arLast=arPose();
+  const oldA=arAnchor,oldU=arSaved&&arSaved.uuid,s=renderer.xr.getSession(),ref=renderer.xr.getReferenceSpace();
+  const mine=arSaved={p:G.position.toArray(),q:G.quaternion.toArray(),s:G.scale.x};arWrite();
+  if(!s||!ref||!frame.createAnchor)return;
+  let pr;
+  try{pr=frame.createAnchor(new XRRigidTransform({x:G.position.x,y:G.position.y,z:G.position.z},{x:G.quaternion.x,y:G.quaternion.y,z:G.quaternion.z,w:G.quaternion.w}),ref);}catch(e){return;}
+  arBusy=true;
+  pr.then(async a=>{
+    let u=null;try{if(a.requestPersistentAnchor)u=await a.requestPersistentAnchor();}catch(e){}
+    if(arSaved===mine){arAnchor=a;if(u){arSaved.uuid=u;arWrite();}}
+    else{try{a.delete();}catch(e){}if(u){try{s.deletePersistentAnchor(u);}catch(e){}}}
+    if(oldA&&oldA!==arAnchor){try{oldA.delete();}catch(e){}}
+    if(oldU&&oldU!==u){try{s.deletePersistentAnchor(oldU);}catch(e){}}
+  }).catch(()=>{}).finally(()=>{arBusy=false;});
+}
+function arFlush(){ // session ending: store the pose even if it hadn't settled yet
+  if(arLast&&arRest===0&&nodes.length&&arDiff(arPose(),arLast)){arSaved={p:G.position.toArray(),q:G.quaternion.toArray(),s:G.scale.x};arWrite();}
+}
+function arPersist(frame,dt){
+  if(!nodes.length)return;
+  const s=renderer.xr.getSession(),ref=renderer.xr.getReferenceSpace();
+  if(arRest){
+    arRestT+=dt;
+    if(arRest===1){arRest=2;arRestore(s);}
+    if(arRest===3){const t=arAnchorPose(frame,ref);if(t){arApply(t);arFinish();}}
+    if(arRest!==0&&arRestT>3)arFallback();
+    return;
+  }
+  if(mode!=='none'||placing){arDirty=true;arSettle=0;return;}
+  if(arDirty){
+    arSettle+=dt;
+    if(arSettle>.7){if(arBusy)arSettle=.7;else{arDirty=false;arSettle=0;if(arDiff(arPose(),arLast))arCommit(frame);}}
+    return;
+  }
+  if(arAnchor){const t=arAnchorPose(frame,ref);if(t)arApply(t);}
+}
+
 /* ---------- desktop picking & flying ---------- */
 const ray=new THREE.Raycaster(),tmp=new THREE.Vector3(),keys={};
 function pick(o,d,maxAng){
@@ -727,11 +826,11 @@ if(navigator.xr&&navigator.xr.isSessionSupported)navigator.xr.isSessionSupported
 async function startXR(look){
   const cur=renderer.xr.getSession();if(cur){cur.end();return;}
   if(!nodes.length){stat('Attach text files before entering VR or mixed reality.');return;}
-  const feats=['hit-test','plane-detection','hand-tracking'];
+  const feats=['hit-test','plane-detection','hand-tracking','anchors','dom-overlay'],dom={root:document.getElementById('top')};
   try{
     let sess;
-    try{renderer.xr.setReferenceSpaceType('local-floor');sess=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['local-floor'],optionalFeatures:feats});}
-    catch(e){renderer.xr.setReferenceSpaceType('local');sess=await navigator.xr.requestSession('immersive-ar',{optionalFeatures:feats});}
+    try{renderer.xr.setReferenceSpaceType('local-floor');sess=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['local-floor'],optionalFeatures:feats,domOverlay:dom});}
+    catch(e){renderer.xr.setReferenceSpaceType('local');sess=await navigator.xr.requestSession('immersive-ar',{optionalFeatures:feats,domOverlay:dom});}
     reqLook=look;await renderer.xr.setSession(sess);
   }catch(e){reqLook=null;stat('Could not start: '+(e&&e.message||e));}
 }
@@ -758,13 +857,13 @@ function applyLook(pass){
   scene.background=pass?null:bgColor;renderer.setClearAlpha(pass?0:1);
   grid.visible=!pass;ringsG.visible=!pass;U.uG.value=pass?1.6:1;
   rig.forEach(r=>{r.hm.visible=!pass;r.cm.visible=!pass;});
-  if(!pass){placing=false;placedOnce=false;reticle.visible=false;planeG.visible=false;clearPlanes();teardownHit();}
+  if(!pass){placing=false;placedOnce=false;reticle.visible=false;planeG.visible=false;clearPlanes();teardownHit();arRest=0;G.visible=true;}
   const n=renderer.xr.getSession()?'Exit':null;arBtn.textContent=n||'Enter mixed reality';vrB.textContent=n||'Enter VR';
 }
 function switchLook(pass){
   const s=renderer.xr.getSession();if(!s||!sessAR||pass===arMode)return;
   applyLook(pass);
-  if(pass){dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);if(nodes.length){setupHit(s);centerS=.3;needCenter=true;}xrNote='Pinch and drag to move the field. Press Place to snap it to a surface';}
+  if(pass){dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);if(nodes.length){setupHit(s);if(!arBegin()){centerS=.3;needCenter=true;}}xrNote='Pinch and drag to move the field. Press Place to snap it to a surface';}
   else xrNote='';
   resetGestures();hud();
 }
@@ -809,7 +908,7 @@ renderer.xr.addEventListener('sessionstart',()=>{
   const envAR=!!s.environmentBlendMode&&s.environmentBlendMode!=='opaque';
   sessAR=reqLook!==null||envAR;
   const pass=reqLook!==null?reqLook==='mr':envAR;reqLook=null;
-  controls.enabled=false;kb.visible=true;kInit=false;kbOpen=false;U.uX.value=1;needCenter=false;lostT=0;
+  controls.enabled=false;kb.visible=true;kInit=false;U.uX.value=1;needCenter=false;lostT=0;domOv=!!s.domOverlayState;arRest=0;arAnchor=null;arLast=null;arDirty=false;arBusy=false;
   try{renderer.xr.setFoveation(0);}catch(e){}
   {const bl=s.renderState&&s.renderState.baseLayer;U.uH.value=bl&&bl.framebufferHeight?bl.framebufferHeight:2000;}
   dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);
@@ -817,13 +916,14 @@ renderer.xr.addEventListener('sessionstart',()=>{
   applyLook(pass);
   xrNote='';
   if(pass){
-    if(nodes.length){setupHit(s);centerS=.3;needCenter=true;xrNote='Pinch and drag to move the field. Press Place to snap it to a surface';}else{xrNote='Load text before entering mixed reality';}
+    if(nodes.length){setupHit(s);const rest=arBegin();if(!rest){centerS=.3;needCenter=true;}xrNote=rest?'Field restored to where you left it. Press Place to move it':'Pinch and drag to move the field. Press Place to snap it to a surface';}else{xrNote='Load text before entering mixed reality';}
   }
   watchSession(s);
   hud();
 });
 renderer.xr.addEventListener('sessionend',()=>{
-  controls.enabled=true;kb.visible=false;
+  if(arMode)arFlush();
+  controls.enabled=true;kb.visible=false;ib.visible=false;G.visible=true;arRest=0;arAnchor=null;arBusy=false;
   scene.background=bgColor;renderer.setClearAlpha(1);grid.visible=true;ringsG.visible=true;
   if(arMode){G.position.set(0,1.4,-1.1);G.scale.setScalar(.6);G.quaternion.identity();}
   if(isFinite(G.scale.x+G.position.x)===false||G.scale.x<.05){G.position.set(0,1.4,-1.1);G.scale.setScalar(.6);G.quaternion.identity();}
@@ -832,6 +932,7 @@ renderer.xr.addEventListener('sessionend',()=>{
   renderer.xr.setReferenceSpaceType('local-floor');
   rig.forEach(r=>{r.hm.visible=true;r.cm.visible=true;r.uiHold=false;});resetGestures();
   dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);camera.position.set(0,1.6,.9);controls.target.copy(G.position);controls.update();hud();
+  if(pendingType){pendingType=false;setTimeout(()=>{try{$q.focus();$q.select();}catch(e){}},250);stat('Type your question with the system keyboard (dictation mic included) and press Ask, then re-enter. The field returns to where you left it in mixed reality.');}
 });
 
 const Y=new THREE.Vector3(0,1,0);let mode='none',gi=-1,g0={},g1={},grabbing=false,prevBtn={};
@@ -1090,27 +1191,13 @@ $('#ctx').onclick=async()=>{
   if(confirm('Remove the attached text from the field and delete its saved copy and results? (History > Files > Forget everything wipes all saved text.)'))await clearCurrent();
 };
 
-/* ---------- voice input (Web Speech API, where the browser provides it) ---------- */
-const $mic=$('#mic');$mic.hidden=!SR;$mic.onclick=()=>voice();
-function vnote(t){if(renderer.xr.isPresenting){xrNote=t;hud();}else stat(t||(nodes.length?summary():'Attach one or more text files to build the field.'));}
-function voice(){
-  if(!SR){vnote('Voice input is not available in this browser.');setTimeout(()=>vnote(''),4000);return;}
-  if(listening){try{vRec.stop();}catch(e){}return;}
-  vRec=new SR();vRec.lang=navigator.language||'en-US';vRec.interimResults=true;vRec.continuous=false;vFinal=false;vErr=false;
-  vRec.onstart=()=>{listening=true;kDirty=true;$mic.textContent='Stop';vnote('Listening\u2026 say your question');};
-  vRec.onresult=e=>{let t='';for(const r of e.results)t+=r[0].transcript;$q.value=t.slice(0,160);vFinal=e.results[e.results.length-1].isFinal;kDirty=true;};
-  vRec.onerror=e=>{vErr=true;vFinal=false;vnote('Voice error: '+(e.error||'unknown')+(e.error==='not-allowed'?' (allow microphone access for this page)':''));};
-  vRec.onend=()=>{listening=false;kDirty=true;$mic.textContent='Voice';const t=$q.value.trim();
-    if(vFinal&&t){kbOpen=false;runQuery(t);}else if(!vErr)vnote('');};
-  try{vRec.start();}catch(e){vnote('Could not start the microphone.');}
-}
 /* ---------- loop ---------- */
 const clock=new THREE.Clock();
 renderer.setAnimationLoop((t,frame)=>{
   const dt=Math.min(clock.getDelta(),.05);U.uT.value+=dt;
   G.updateMatrixWorld(true);lodLabels(dt);
   if(needCenter&&renderer.xr.isPresenting&&frame){const xc=renderer.xr.getCamera(),o=xc.getWorldPosition(new THREE.Vector3()),d=xc.getWorldDirection(new THREE.Vector3());d.y=0;if(d.lengthSq()>1e-4){d.normalize();G.scale.setScalar(centerS);const dist=arMode?.8:1.1;G.position.set(o.x+d.x*dist,o.y-.1,o.z+d.z*dist);G.quaternion.identity();needCenter=false;}}
-  if(renderer.xr.isPresenting){xrWatch(dt);placeKB(dt);gestures(dt);sticks(dt);if(arMode&&frame)arFrame(frame);drawKBIfDirty();}
+  if(renderer.xr.isPresenting){xrWatch(dt);placeKB(dt);gestures(dt);sticks(dt);if(arMode&&frame){arPersist(frame,dt);arFrame(frame);}drawKBIfDirty();}
   else{
     U.uH.value=renderer.domElement.height;
     const v=new THREE.Vector3(),sp=dt*1.2;
