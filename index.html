@@ -70,8 +70,8 @@ body.hopen #hint{display:none}
     <button id="vr" hidden>Enter VR</button>
     <button id="ar" hidden style="color:var(--am);border-color:var(--am)">Enter mixed reality</button>
   </div>
-  <form id="qf" class="row"><input id="q" type="text" placeholder="Ask about your text, e.g. how does heat affect the ocean?" autocomplete="off"><button type="submit">Ask</button></form>
-  <div class="row"><button id="clr">Clear query &amp; selection</button><button id="hbtn">History</button></div>
+  <form id="qf" class="row"><input id="q" type="text" placeholder="Ask about your text, e.g. how does heat affect the ocean?" autocomplete="off"><button type="submit">Ask</button><button type="button" id="mic" hidden>Voice</button></form>
+  <div class="row"><button id="clr">Clear query &amp; selection</button><button id="ctx" title="Remove the attached text and its saved copy">Clear text</button><button id="hbtn">History</button></div>
   <div id="stat">Attach one or more text files to build the field.</div>
 </div>
 <div id="info" class="panel"></div>
@@ -342,12 +342,12 @@ const U={uT:{value:0},uH:{value:900},uG:{value:1},uX:{value:0}};
 /* pure additive light: colour adds, alpha untouched, so passthrough shows through instead of dark halos */
 const ADD={blending:THREE.CustomBlending,blendEquation:THREE.AddEquation,blendSrc:THREE.OneFactor,blendDst:THREE.OneFactor,blendEquationAlpha:THREE.AddEquation,blendSrcAlpha:THREE.ZeroFactor,blendDstAlpha:THREE.OneFactor};
 const nodeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
-vertexShader:`attribute float aSize;attribute float aI;attribute vec3 aCol;uniform float uH;uniform float uT;varying vec3 vC;varying float vI;
+vertexShader:`attribute float aSize;attribute float aI;attribute float aF;attribute vec3 aCol;uniform float uH;uniform float uT;varying vec3 vC;varying float vI;varying float vF;
 void main(){vec4 mv=modelViewMatrix*vec4(position,1.);float tw=.85+.15*sin(uT*2.+position.x*40.+position.y*31.);
-gl_PointSize=max(aSize*uH*.5*projectionMatrix[1][1]/-mv.z,5.+2.*uX);vC=aCol;vI=aI*tw;gl_Position=projectionMatrix*mv;}`,
-fragmentShader:`uniform float uG;uniform float uX;varying vec3 vC;varying float vI;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;
+gl_PointSize=max(aSize*(1.+.4*(1.-aF))*uH*.5*projectionMatrix[1][1]/-mv.z,5.+2.*uX);vC=aCol;vI=aI*tw;vF=aF;gl_Position=projectionMatrix*mv;}`,
+fragmentShader:`uniform float uG;uniform float uX;varying vec3 vC;varying float vI;varying float vF;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;
 float h=pow(1.-d*2.,2.);float c=smoothstep(.22,.0,d);float k=smoothstep(.3,.26,d);float rim=smoothstep(.4,.36,d)*smoothstep(.28,.33,d);float ring=smoothstep(.5,.45,d)*smoothstep(.3,.38,d);
-gl_FragColor=vec4(vC*(h*(1.1-.6*uX)+c*1.9+ring*.7+uX*(k*.8+rim*.7))*vI*uG,1.);}`});
+float sharp=h*(1.1-.6*uX)+c*1.9+ring*.7+uX*(k*.8+rim*.7);float soft=pow(1.-d*2.,1.4)*.9;gl_FragColor=vec4(vC*mix(soft,sharp,vF)*vI*uG,1.);}`});
 const edgeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute float aT;attribute float aI;attribute float aPh;attribute vec3 aCol;uniform float uT;varying float vA;varying vec3 vC;
 void main(){vA=aI*mix(.55,1.,aT);vC=aCol;
@@ -366,7 +366,7 @@ fragmentShader:`uniform float uG;uniform float uX;varying float vI;varying float
 gl_FragColor=vec4((vC*h+vec3(1.)*c*vH*vH)*vI*.4*uG,1.);}`});
 const CY=[.36,.94,1],VI=[.6,.48,1],AM=[1,.7,.28],WH=[.92,1,1],GO=[1,.84,.45];
 const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
-let pts,lines,dots,dI,dD,dC,nA,nS,nC,eI,eC,labelGroup=new THREE.Group(),fmax=1;G.add(labelGroup);
+let pts,lines,dots,dI,dD,dC,nA,nS,nC,nF,eI,eC,labelGroup=new THREE.Group(),fmax=1;G.add(labelGroup);
 const labelCache=new Map();
 function label(i,kind){
   const key=nodes[i].word+kind;let s=labelCache.get(key);
@@ -388,9 +388,9 @@ function buildVisuals(){
   {const lf=nodes.map(n=>Math.log(1+n.freq)),lo=Math.min(...lf),hi=Math.max(...lf);
    nodes.forEach((n,i)=>n.nf=hi>lo?(lf[i]-lo)/(hi-lo):.5);} // 0 = rarest drawn word, 1 = most frequent
   const pos=new Float32Array(N*3);nodes.forEach((n,i)=>pos.set([n.x,n.y,n.z],i*3));
-  nA=new Float32Array(N);nS=new Float32Array(N);nC=new Float32Array(N*3);
+  nA=new Float32Array(N);nF=new Float32Array(N).fill(1);nS=new Float32Array(N);nC=new Float32Array(N*3);
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
-  g.setAttribute('aI',new THREE.BufferAttribute(nA,1));g.setAttribute('aSize',new THREE.BufferAttribute(nS,1));g.setAttribute('aCol',new THREE.BufferAttribute(nC,3));
+  g.setAttribute('aI',new THREE.BufferAttribute(nA,1));g.setAttribute('aSize',new THREE.BufferAttribute(nS,1));g.setAttribute('aF',new THREE.BufferAttribute(nF,1));g.setAttribute('aCol',new THREE.BufferAttribute(nC,3));
   pts=new THREE.Points(g,nodeMat);pts.frustumCulled=false;
   const ep=new Float32Array(E*6),et=new Float32Array(E*2),ph=new Float32Array(E*2);eI=new Float32Array(E*2);eC=new Float32Array(E*6);
   const dp=new Float32Array(E*PN*3),dB=new Float32Array(E*PN*3),dPh=new Float32Array(E*PN),dL=new Float32Array(E*PN),dK=new Float32Array(E*PN);dI=new Float32Array(E*PN);dD=new Float32Array(E*PN);dC=new Float32Array(E*PN*3);
@@ -415,8 +415,8 @@ function applyState(){
   const labs=[];
   for(let i=0;i<N;i++){ni[i]=nodes[i].nf;}
   if(Q&&Q.A){
-    for(let i=0;i<N;i++){nI[i]=Q.show[i]?(.25+.75*Q.A[i])*(.8+.2*ni[i]):.04;nc[i]=Q.show[i]?1:0;}
-    for(let e=0;e<E;e++){ei[e]=Q.eI[e];ec[e]=Q.eI[e]>.02?1:0;}
+    for(let i=0;i<N;i++){nI[i]=Q.show[i]?(.25+.75*Q.A[i])*(.8+.2*ni[i]):.14;nc[i]=Q.show[i]?1:0;}
+    for(let e=0;e<E;e++){ei[e]=Q.eI[e];ec[e]=Q.eI[e]>.09?1:0;}
     Q.top.slice(0,35).forEach(i=>labs.push([i,1]));
   }else{
     for(let i=0;i<N;i++)nI[i]=.55+.9*Math.pow(ni[i],1);
@@ -425,14 +425,14 @@ function applyState(){
   }
   const pre=nI.slice();
   if(sel>=0){
-    for(let i=0;i<N;i++)nI[i]*=.42;for(let e=0;e<E;e++)ei[e]*=.15;
+    for(let i=0;i<N;i++)nI[i]*=.55;for(let e=0;e<E;e++)ei[e]=Math.max(ei[e]*.6,.04);
     nI[sel]=1.3;nc[sel]=2;labs.length=0;labs.push([sel,1]);
     nodes[sel].adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w).forEach((a,r)=>{
       nI[a.j]=.95;nc[a.j]=3;ei[a.e]=.45+.8*edges[a.e].wn;ec[a.e]=2;if(r<24)labs.push([a.j,0]);});
   }
   visible=[];
   for(let i=0;i<N;i++){
-    nA[i]=nI[i];nS[i]=.017+.042*ni[i]+(nc[i]===2?.03:nc[i]===1?.012*nI[i]:0);
+    nA[i]=nI[i];nF[i]=sel>=0?(nc[i]>=2?1:0):(Q&&Q.A?(nc[i]===1?1:0):1);nS[i]=.017+.042*ni[i]+(nc[i]===2?.03:nc[i]===1?.012*nI[i]:0);
     const col=nc[i]===2?GO:nc[i]===1?mix(CY,AM,Math.min(1,nI[i])):nc[i]===3?WH:(ni[i]<.7?mix(VI,CY,ni[i]/.7):mix(CY,WH,(ni[i]-.7)/.3));
     nC.set(col,i*3);if(nI[i]>.1||pre[i]>.1)visible.push(i);
   }
@@ -447,7 +447,7 @@ function applyState(){
     for(let m=0;m<PN;m++){const q=k*PN+m;dI[q]=act;dD[q]=dir;dC.set(dc,q*3);}
   });
   aT.needsUpdate=true;for(const a of ['aI','aDir','aCol'])dots.geometry.attributes[a].needsUpdate=true;
-  for(const a of ['aI','aSize','aCol'])pts.geometry.attributes[a].needsUpdate=true;
+  for(const a of ['aI','aSize','aCol','aF'])pts.geometry.attributes[a].needsUpdate=true;
   lines.geometry.attributes.aI.needsUpdate=true;lines.geometry.attributes.aCol.needsUpdate=true;
   labelGroup.clear();labs.forEach(([i,k])=>labelGroup.add(label(i,k)));forcedSet=new Set(labs.map(l=>l[0]));
   updateInfo();
@@ -466,7 +466,7 @@ function runQuery(text){
   edges.forEach((e,k)=>{if(!show[e.s]||!show[e.t])return;let ov=0;
     pq[e.s].forEach((v,q)=>{ov+=Math.min(v,pq[e.t].get(q)||0);});
     ov=(ov+.25*Math.min(A[e.s],A[e.t]))*(.4+.6*e.wn);eIv[k]=ov;mo=Math.max(mo,ov);});
-  for(let k=0;k<E;k++)eIv[k]=eIv[k]>0?.1+.95*Math.pow(eIv[k]/mo,.8):.008;
+  for(let k=0;k<E;k++)eIv[k]=eIv[k]>0?.1+.95*Math.pow(eIv[k]/mo,.8):.03;
   Q={A,show,top,eI:eIv,terms:res.seeds.map(s=>s.q)};sel=-1;applyState();if(!replaying)pushHist(queryEntry(text,top,A,eIv));
   stat(`Leap 1 found ${n1} words, leap 2 found ${n2} more${miss?` (${miss} outside the drawn field)`:''}. Lights travel the direction the query spreads; brighter edges carry more overlap.`);
 }
@@ -514,6 +514,7 @@ $('#qf').addEventListener('submit',e=>{e.preventDefault();runQuery($q.value);});
 $('#clr').onclick=clearAll;
 /* ---------- XR panel: status strip, query bar and keyboard, kept low in view ---------- */
 let needCenter=false,arMode=false,placing=false,placedOnce=false,arScale=null,lastHit=false,reqLook=null,sessAR=false,centerS=.3,xrNote='';
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let listening=false,vRec=null,vFinal=false,vErr=false;
 let hudA='Concept field',hudB='';
 const KW=1024,KH=456,KEYS=[];
 const kc=document.createElement('canvas');kc.width=KW;kc.height=KH;
@@ -529,7 +530,7 @@ function hud(){
 (function buildKeys(){
   KEYS.push({id:'field',x:12,y:66,w:516,h:70,act:'open'},{label:'Ask',x:538,y:66,w:84,h:70,act:'ask'},
     {label:'Clear',x:632,y:66,w:84,h:70,act:'clear'},{id:'mode',x:726,y:66,w:138,h:70,act:'mode'},{id:'place',x:874,y:66,w:138,h:70,act:'place'},
-    {id:'toggle',x:944,y:8,w:68,h:44,act:'toggle'});
+    {id:'mic',x:844,y:8,w:92,h:44,act:'mic'},{id:'toggle',x:944,y:8,w:68,h:44,act:'toggle'});
   const u=78,g=6,rows=[
     [...'1234567890'].map(c=>[c,1]).concat([['\u232b',1.6,'bs']]),
     [...'qwertyuiop'].map(c=>[c,1]),
@@ -549,7 +550,7 @@ function drawKB(){
   x.font='600 28px '+F;x.fillStyle=sel>=0?'#ffb347':'#5df0ff';
   let a=hudA;if(a.length>30)a=a.slice(0,29)+'\u2026';x.fillText(a,20,32);
   const aw=x.measureText(a).width;x.font='20px '+F;x.fillStyle='rgba(214,246,255,.85)';
-  x.fillText(hudB,36+aw,33,Math.max(60,925-aw-36));
+  x.fillText(hudB,36+aw,33,Math.max(60,835-aw-36));
   const hov=new Set(rig.map(r=>r.hk).filter(Boolean)),now=performance.now();
   for(const k of KEYS){
     if(k.kbk&&!kbOpen)continue;
@@ -564,10 +565,10 @@ function drawKB(){
       continue;
     }
     rr(x,k.x,k.y,k.w,k.h,8);
-    x.fillStyle=fl?'rgba(255,179,71,.6)':on?'rgba(93,240,255,.4)':'rgba(93,240,255,.1)';x.fill();
+    x.fillStyle=(fl||(k.id==='mic'&&listening))?'rgba(255,179,71,.6)':on?'rgba(93,240,255,.4)':'rgba(93,240,255,.1)';x.fill();
     x.strokeStyle=on?'#5df0ff':'rgba(93,240,255,.4)';x.lineWidth=2;x.stroke();
-    x.globalAlpha=(k.id==='mode'&&!sessAR)?.4:1;
-    const lab=k.id==='mode'?(sessAR?(arMode?'To VR':'To MR'):'VR only'):k.id==='place'?(arMode?'Place':'Recenter'):k.id==='toggle'?(kbOpen?'hide':'keys'):k.label;
+    x.globalAlpha=((k.id==='mode'&&!sessAR)||(k.id==='mic'&&!SR))?.4:1;
+    const lab=k.id==='mic'?(listening?'Stop':'Voice'):k.id==='mode'?(sessAR?(arMode?'To VR':'To MR'):'VR only'):k.id==='place'?(arMode?'Place':'Recenter'):k.id==='toggle'?(kbOpen?'hide':'keys'):k.label;
     x.font=(k.kbk?'600 30px ':'600 24px ')+F;x.fillStyle=k.act==='ask'?'#ffb347':'#d6fbff';x.textAlign='center';
     x.fillText(lab,k.x+k.w/2,k.y+k.h/2+1);x.globalAlpha=1;
   }
@@ -600,6 +601,7 @@ function keyAct(k,r){
   else if(k.act==='toggle')kbOpen=!kbOpen;
   else if(k.act==='ask'){if($q.value.trim()){runQuery($q.value);kbOpen=false;}}
   else if(k.act==='clear')clearAll();
+  else if(k.act==='mic')voice();
   else if(k.act==='mode'){if(sessAR)switchLook(!arMode);}
   else if(k.act==='place'){if(arMode)beginPlacing();else{kInit=false;recoverField(true);}}
   kDirty=true;pressK=k;pressT=performance.now();
@@ -852,8 +854,10 @@ function gestures(dt){
   const P=rig.map(r=>{const v=handPoint(r);return v&&isFinite(v.x+v.y+v.z)?v:null;});uiStep();const act=[0,1].filter(i=>P[i]&&rig[i].pin&&!rig[i].uiHold&&!placing);
   if(act.length===2){
     const a=P[0],b=P[1],d=a.distanceTo(b),M=a.clone().add(b).multiplyScalar(.5),ang=Math.atan2(b.x-a.x,b.z-a.z);
-    if(mode!=='two'){if(g1)g1.moved=true;g0={d:Math.max(d,.05),ang,M,P:G.position.clone(),s:G.scale.x,q:G.quaternion.clone()};mode='two';}
-    else{
+    if(mode!=='two'){if(g1)g1.moved=true;g0={d:Math.max(d,.05),ang,M,P:G.position.clone(),s:G.scale.x,q:G.quaternion.clone(),on:false};mode='two';}
+    else if(!g0.on){ // two-hand scale/rotate only after a deliberate move
+      if(Math.abs(d/g0.d-1)>.12||Math.abs(Math.atan2(Math.sin(ang-g0.ang),Math.cos(ang-g0.ang)))>.25||M.distanceTo(g0.M)>.07)g0={d:Math.max(d,.05),ang,M,P:G.position.clone(),s:G.scale.x,q:G.quaternion.clone(),on:true};
+    }else{
       const s=THREE.MathUtils.clamp(g0.s*Math.max(d,.02)/g0.d,.08,8),R=new THREE.Quaternion().setFromAxisAngle(Y,ang-g0.ang);
       G.scale.setScalar(s);G.quaternion.copy(R).multiply(g0.q);
       G.position.copy(M).add(g0.P.clone().sub(g0.M).applyQuaternion(R).multiplyScalar(s/g0.s));
@@ -867,14 +871,15 @@ function gestures(dt){
       let k=-1;
       if(!wasTwo&&nodes.length){
         G.updateMatrixWorld(true);
-        k=nearestWorld(p,.05);
-        if(k<0){const o=rig[i].c.getWorldPosition(new THREE.Vector3()),d=new THREE.Vector3(0,0,-1).applyQuaternion(rig[i].c.getWorldQuaternion(new THREE.Quaternion()));k=pick(o,d,.04);}
+        k=nearestWorld(p,.065);
+        if(k<0){const o=rig[i].c.getWorldPosition(new THREE.Vector3()),d=new THREE.Vector3(0,0,-1).applyQuaternion(rig[i].c.getWorldQuaternion(new THREE.Quaternion()));k=pick(o,d,.06);}
       }
       g1={p:p.clone(),P:G.position.clone(),k,moved:false};
     }else if(grabbing){
       const dl=p.clone().sub(g1.p);
-      if(!g1.moved&&dl.length()>.015)g1.moved=true;
-      if(g1.moved)G.position.copy(g1.P).add(dl);
+      if(!g1.moved){
+        if(dl.length()>(g1.k>=0?.09:.05)){g1.moved=true;g1.p=p.clone();g1.P=G.position.clone();} // deliberate drag only; rebased so the field doesn't jump
+      }else G.position.copy(g1.P).add(dl);
     }
   }else{endTap();mode='none';}
 }
@@ -984,7 +989,7 @@ function resHTML(){
 function fileHTML(){
   const L=corpora.slice().sort((a,b)=>b.ts-a.ts);
   if(!L.length)return '<div class="hs">No saved files yet. Attached files are stored in this browser and reload automatically.</div>';
-  return '<div class="hs" style="margin-bottom:8px">Stored in this browser. Your last file set reloads automatically.</div>'+
+  return '<div class="hs" style="margin-bottom:8px">Stored in this browser. Your last file set reloads automatically.</div><div class="ha" style="margin:0 0 10px"><button data-a="forget">Forget everything</button></div>'+
     L.map(c=>`<div class="he" data-c="${c.id}"><div class="hh"><b>${esc(c.name)}</b>${c.id===curCorpus?'<span class="k s">ACTIVE</span>':''}</div><div class="hs">${c.docs.length} file${c.docs.length===1?'':'s'} \u00b7 ${(c.size/1024).toFixed(1)} KB \u00b7 ${ago(c.ts)} \u00b7 ${hist.filter(h=>h.corpus===c.id).length} results</div><div class="ha"><button data-a="load">Load</button><button data-a="delc">Delete</button></div></div>`).join('');
 }
 function renderHist(){
@@ -1000,6 +1005,7 @@ $hist.querySelector('.htabs').addEventListener('click',e=>{const t=e.target.clos
 $hf.addEventListener('input',()=>{hfilter=$hf.value;renderHist();});
 $hb.addEventListener('click',async e=>{
   const fc=e.target.closest('[data-f]');if(fc){$hf.value=hfilter=fc.dataset.f;renderHist();return;}
+  const fg=e.target.closest('[data-a="forget"]');if(fg){if(confirm('Forget all saved text files and results? The current field is unloaded too.'))await forgetAll();return;}
   const card=e.target.closest('.he');if(!card)return;
   const btn=e.target.closest('button[data-a]'),w=e.target.closest('[data-w]');
   if(card.dataset.c){
@@ -1053,6 +1059,50 @@ function lodLabels(dt){
   for(const [i,d,f] of c){on.add(i);let sp=lodMap.get(i);if(!sp){sp=lodSprite(i);lodMap.set(i,sp);}
     if(sp.parent!==lodGroup)lodGroup.add(sp);sp.material.opacity=Math.min(1,f);}
   for(const [i,sp] of lodMap)if(!on.has(i)){lodGroup.remove(sp);if(lodMap.size>150){sp.material.map.dispose();sp.material.dispose();lodMap.delete(i);}}
+}
+
+/* ---------- clearing text / memory ---------- */
+function unloadField(){
+  resetCorpus();
+  nodes=[];edges=[];word2i=new Map();sel=-1;Q=null;visible=[];forcedSet=new Set();docCount=0;curCorpus=null;
+  if(pts){G.remove(pts,lines,dots);pts.geometry.dispose();lines.geometry.dispose();dots.geometry.dispose();pts=lines=dots=null;}
+  labelGroup.clear();labelCache.forEach(sp=>{sp.material.map.dispose();sp.material.dispose();});labelCache.clear();lodClear();
+  $q.value='';$('#file').value='';updateInfo();stat('Attach one or more text files to build the field.');
+}
+async function clearCurrent(){
+  const id=curCorpus;
+  if(id){
+    if(corpora.some(x=>x.id===id)){corpora=corpora.filter(x=>x.id!==id);await dbDel('corpora',id);}
+    for(const h of hist.filter(h=>h.corpus===id))await dbDel('history',h.id);
+    hist=hist.filter(h=>h.corpus!==id);
+  }
+  try{localStorage.removeItem('cf.last');}catch(e){}
+  unloadField();renderHist();
+}
+async function forgetAll(){
+  for(const c of corpora)await dbDel('corpora',c.id);
+  for(const h of hist)await dbDel('history',h.id);
+  corpora=[];hist=[];try{localStorage.removeItem('cf.last');}catch(e){}
+  unloadField();renderHist();
+}
+$('#ctx').onclick=async()=>{
+  if(!nodes.length&&!corpora.length){stat('Nothing is attached.');return;}
+  if(confirm('Remove the attached text from the field and delete its saved copy and results? (History > Files > Forget everything wipes all saved text.)'))await clearCurrent();
+};
+
+/* ---------- voice input (Web Speech API, where the browser provides it) ---------- */
+const $mic=$('#mic');$mic.hidden=!SR;$mic.onclick=()=>voice();
+function vnote(t){if(renderer.xr.isPresenting){xrNote=t;hud();}else stat(t||(nodes.length?summary():'Attach one or more text files to build the field.'));}
+function voice(){
+  if(!SR){vnote('Voice input is not available in this browser.');setTimeout(()=>vnote(''),4000);return;}
+  if(listening){try{vRec.stop();}catch(e){}return;}
+  vRec=new SR();vRec.lang=navigator.language||'en-US';vRec.interimResults=true;vRec.continuous=false;vFinal=false;vErr=false;
+  vRec.onstart=()=>{listening=true;kDirty=true;$mic.textContent='Stop';vnote('Listening\u2026 say your question');};
+  vRec.onresult=e=>{let t='';for(const r of e.results)t+=r[0].transcript;$q.value=t.slice(0,160);vFinal=e.results[e.results.length-1].isFinal;kDirty=true;};
+  vRec.onerror=e=>{vErr=true;vFinal=false;vnote('Voice error: '+(e.error||'unknown')+(e.error==='not-allowed'?' (allow microphone access for this page)':''));};
+  vRec.onend=()=>{listening=false;kDirty=true;$mic.textContent='Voice';const t=$q.value.trim();
+    if(vFinal&&t){kbOpen=false;runQuery(t);}else if(!vErr)vnote('');};
+  try{vRec.start();}catch(e){vnote('Could not start the microphone.');}
 }
 /* ---------- loop ---------- */
 const clock=new THREE.Clock();
