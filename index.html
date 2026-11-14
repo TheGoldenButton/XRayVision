@@ -372,7 +372,7 @@ function label(i,kind){
   if(!s){
     const c=document.createElement('canvas');c.width=768;c.height=192;const x=c.getContext('2d');
     x.font='600 100px "Chakra Petch",system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';
-    x.shadowColor=kind?'#ffb347':'#5df0ff';x.shadowBlur=24;x.fillStyle=kind?'#ffe2a8':'#d6fbff';x.fillText(nodes[i].word,384,96);
+    x.shadowColor=kind===1?'#ffb347':'#5df0ff';x.shadowBlur=24;x.fillStyle=kind===1?'#ffe2a8':'#d6fbff';x.fillText(nodes[i].word,384,96);
     const tx=new THREE.CanvasTexture(c);tx.anisotropy=8;tx.minFilter=THREE.LinearMipmapLinearFilter;tx.colorSpace=THREE.SRGBColorSpace;
     const m=new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false,blending:THREE.AdditiveBlending});
     s=new THREE.Sprite(m);s.scale.set(.2,.05,1);s.renderOrder=10;labelCache.set(key,s);
@@ -380,6 +380,7 @@ function label(i,kind){
   s.position.set(nodes[i].x,nodes[i].y+.045,nodes[i].z);return s;
 }
 function buildVisuals(){
+  lodClear();
   if(pts){G.remove(pts,lines,dots);pts.geometry.dispose();lines.geometry.dispose();dots.geometry.dispose();}
   labelCache.forEach(s=>{s.material.map.dispose();s.material.dispose();});labelCache.clear();
   const N=nodes.length,E=edges.length;fmax=Math.max(...nodes.map(n=>n.score));
@@ -406,7 +407,7 @@ function buildVisuals(){
 }
 
 /* ---------- state / highlighting ---------- */
-let visible=[];
+let visible=[],forcedSet=new Set();
 function applyState(){
   const N=nodes.length,E=edges.length;if(!N)return;
   const nI=new Float32Array(N),ni=new Float32Array(N),ei=new Float32Array(E),ec=new Uint8Array(E),nc=new Uint8Array(N);
@@ -419,7 +420,7 @@ function applyState(){
   }else{
     for(let i=0;i<N;i++)nI[i]=.55+.9*Math.pow(ni[i],1);
     for(let e=0;e<E;e++)ei[e]=(.04+.14*edges[e].wn)*(.45+.9*(nodes[edges[e].s].nf+nodes[edges[e].t].nf)/2);
-    nodes.map((n,i)=>i).sort((a,b)=>nodes[b].score-nodes[a].score).slice(0,40).forEach(i=>labs.push([i,0]));
+    
   }
   const pre=nI.slice();
   if(sel>=0){
@@ -447,7 +448,7 @@ function applyState(){
   aT.needsUpdate=true;for(const a of ['aI','aDir','aCol'])dots.geometry.attributes[a].needsUpdate=true;
   for(const a of ['aI','aSize','aCol'])pts.geometry.attributes[a].needsUpdate=true;
   lines.geometry.attributes.aI.needsUpdate=true;lines.geometry.attributes.aCol.needsUpdate=true;
-  labelGroup.clear();labs.forEach(([i,k])=>labelGroup.add(label(i,k)));
+  labelGroup.clear();labs.forEach(([i,k])=>labelGroup.add(label(i,k)));forcedSet=new Set(labs.map(l=>l[0]));
   updateInfo();
 }
 function runQuery(text){
@@ -977,11 +978,37 @@ $hb.addEventListener('click',async e=>{
   if(c&&!nodes.length&&!curCorpus){if(await ingest(c.docs,{id:c.id,noSave:true}))stat(summary()+' Restored from your last session.');}
   renderHist();
 })();
+/* ---------- zoom-reveal labels: words appear as the camera nears their nodes ---------- */
+const lodGroup=new THREE.Group();G.add(lodGroup);
+const lodMap=new Map(),_cl=new THREE.Vector3(),_cw=new THREE.Vector3();
+function lodSprite(i){
+  const c=document.createElement('canvas');c.width=512;c.height=128;const x=c.getContext('2d');
+  x.font='600 66px "Chakra Petch",system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';
+  x.shadowColor='#5df0ff';x.shadowBlur=16;x.fillStyle='#d6fbff';x.fillText(nodes[i].word,256,64);
+  const tx=new THREE.CanvasTexture(c);tx.anisotropy=8;tx.minFilter=THREE.LinearMipmapLinearFilter;tx.colorSpace=THREE.SRGBColorSpace;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false,blending:THREE.AdditiveBlending}));
+  sp.scale.set(.2,.05,1);sp.renderOrder=10;sp.position.set(nodes[i].x,nodes[i].y+.045,nodes[i].z);return sp;
+}
+function lodClear(){lodMap.forEach(sp=>{lodGroup.remove(sp);sp.material.map.dispose();sp.material.dispose();});lodMap.clear();}
+let lodT=0;
+function lodLabels(dt){
+  if(!nodes.length)return;
+  lodT+=dt;if(lodT<.07)return;lodT=0;
+  const cam=renderer.xr.isPresenting?renderer.xr.getCamera():camera;
+  cam.getWorldPosition(_cw);_cl.copy(_cw);G.worldToLocal(_cl);
+  const c=[];
+  for(const i of visible){if(forcedSet.has(i))continue;const n=nodes[i],d=Math.hypot(n.x-_cl.x,n.y-_cl.y,n.z-_cl.z),R=1.5*(.65+.7*n.nf);if(d<R)c.push([i,d,(R-d)/(R*.35)]);}
+  c.sort((a,b)=>a[1]-b[1]);c.length=Math.min(c.length,70);
+  const on=new Set();
+  for(const [i,d,f] of c){on.add(i);let sp=lodMap.get(i);if(!sp){sp=lodSprite(i);lodMap.set(i,sp);}
+    if(sp.parent!==lodGroup)lodGroup.add(sp);sp.material.opacity=Math.min(1,f);}
+  for(const [i,sp] of lodMap)if(!on.has(i)){lodGroup.remove(sp);if(lodMap.size>150){sp.material.map.dispose();sp.material.dispose();lodMap.delete(i);}}
+}
 /* ---------- loop ---------- */
 const clock=new THREE.Clock();
 renderer.setAnimationLoop((t,frame)=>{
   const dt=Math.min(clock.getDelta(),.05);U.uT.value+=dt;
-  G.updateMatrixWorld(true);
+  G.updateMatrixWorld(true);lodLabels(dt);
   if(needCenter&&renderer.xr.isPresenting&&frame){const xc=renderer.xr.getCamera(),o=xc.getWorldPosition(new THREE.Vector3()),d=xc.getWorldDirection(new THREE.Vector3());d.y=0;if(d.lengthSq()>1e-4){d.normalize();G.scale.setScalar(.3);G.position.set(o.x+d.x*.8,o.y-.1,o.z+d.z*.8);G.quaternion.identity();needCenter=false;}}
   if(renderer.xr.isPresenting){placeKB(dt);gestures(dt);sticks(dt);if(arMode&&frame)arFrame(frame);drawKBIfDirty();}
   else{
