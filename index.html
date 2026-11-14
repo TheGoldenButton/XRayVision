@@ -30,6 +30,34 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
 #info .w{opacity:.6}
 #hint{bottom:14px;left:14px;font-size:12px;opacity:.8;max-width:min(520px,calc(100vw - 150px));line-height:1.45}
 #VRButton{background:rgba(3,16,28,.8)!important;border:1px solid var(--cy)!important;color:var(--cy)!important;font-family:inherit!important;border-radius:2px!important}
+
+#hist{left:14px;top:230px;bottom:14px;width:min(380px,calc(100vw - 28px));display:flex;flex-direction:column;padding:0;overflow:hidden}
+body.hopen #hint{display:none}
+.htabs{display:flex;gap:6px;padding:10px 10px 0;align-items:center}
+.htabs button.on{background:rgba(93,240,255,.3);color:#fff}
+#hclr{margin-left:auto;font-size:12px;padding:5px 8px;color:var(--am);border-color:rgba(255,179,71,.5)}
+#hf{flex:none;margin:8px 10px 0;width:calc(100% - 20px)}
+#hbody{overflow:auto;padding:10px;flex:1}
+.he{border:1px solid rgba(93,240,255,.22);background:rgba(0,0,0,.25);padding:8px 9px;margin-bottom:8px;border-radius:2px}
+.hh{display:flex;gap:8px;align-items:baseline}
+.hh b{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.k{font-size:10px;letter-spacing:.08em;padding:1px 5px;border:1px solid;border-radius:2px;flex:none}
+.k.q{color:var(--am);border-color:rgba(255,179,71,.6)}
+.k.s{color:var(--cy);border-color:rgba(93,240,255,.6)}
+.t,.hs{font-size:11px;opacity:.65}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+.chip{font-size:12px;padding:2px 7px;border:1px solid rgba(93,240,255,.4);background:rgba(93,240,255,.08);cursor:pointer;border-radius:2px}
+.chip:hover{background:rgba(93,240,255,.28)}
+.chip.hot{border-color:rgba(255,179,71,.8);color:var(--am);background:rgba(255,179,71,.08)}
+.chip small{opacity:.7}
+#hist details summary{font-size:12px;cursor:pointer;opacity:.85}
+.lk{margin:4px 0 0;padding:0;list-style:none;font-size:12px}
+.lk li{display:flex;justify-content:space-between;gap:8px;padding:2px 0;cursor:pointer}
+.lk li:hover{color:var(--am)}
+.lk em{font-style:normal}
+.lk span{opacity:.6}
+.ha{display:flex;gap:6px;margin-top:6px}
+.ha button{padding:3px 8px;font-size:12px}
 </style>
 </head>
 <body>
@@ -42,10 +70,15 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
     <button id="ar" hidden style="color:var(--am);border-color:var(--am)">Enter mixed reality</button>
   </div>
   <form id="qf" class="row"><input id="q" type="text" placeholder="Ask about your text, e.g. how does heat affect the ocean?" autocomplete="off"><button type="submit">Ask</button></form>
-  <div class="row"><button id="clr">Clear query &amp; selection</button></div>
+  <div class="row"><button id="clr">Clear query &amp; selection</button><button id="hbtn">History</button></div>
   <div id="stat">Attach one or more text files, or load the demo text, to build the field.</div>
 </div>
 <div id="info" class="panel"></div>
+<div id="hist" class="panel" hidden>
+  <div class="htabs"><button data-t="res">Results</button><button data-t="files">Files</button><button id="hclr" title="Delete all saved results">Clear all</button><button id="hx" title="Close">✕</button></div>
+  <input id="hf" type="text" placeholder="Filter by word or query…" autocomplete="off">
+  <div id="hbody"></div>
+</div>
 <div id="hint" class="panel">Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click a concept to select. VR: a query bar and keyboard float at the bottom of your view (point and pinch or trigger the bar to type). Mixed reality (Quest 3): press Enter mixed reality to see your room through the passthrough cameras. Pinch and drag anywhere to move the data sphere, pinch with both hands and spread to resize, quick pinch on a concept to select it. Sticks fly in VR. A adds the selected concept to the query, B clears. Press Place on the panel to snap the field onto a wall, table or floor.</div>
 
 <script type="module">
@@ -224,6 +257,7 @@ function coocc(qWords){
 
 /* ---------- graph model: nodes are the words the pipeline above would surface ---------- */
 let nodes=[],edges=[],word2i=new Map(),sel=-1,Q=null;
+let curCorpus=null,replaying=false,hist=[],corpora=[];
 const MAXN=600,K=6;
 function buildField(){
   const cand=[];
@@ -309,10 +343,10 @@ const ADD={blending:THREE.CustomBlending,blendEquation:THREE.AddEquation,blendSr
 const nodeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute float aSize;attribute float aI;attribute vec3 aCol;uniform float uH;uniform float uT;varying vec3 vC;varying float vI;
 void main(){vec4 mv=modelViewMatrix*vec4(position,1.);float tw=.85+.15*sin(uT*2.+position.x*40.+position.y*31.);
-gl_PointSize=max(aSize*uH*.5*projectionMatrix[1][1]/-mv.z,2.5+2.*uX);vC=aCol;vI=aI*tw;gl_Position=projectionMatrix*mv;}`,
+gl_PointSize=max(aSize*uH*.5*projectionMatrix[1][1]/-mv.z,5.+2.*uX);vC=aCol;vI=aI*tw;gl_Position=projectionMatrix*mv;}`,
 fragmentShader:`uniform float uG;uniform float uX;varying vec3 vC;varying float vI;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;
-float h=pow(1.-d*2.,2.);float c=smoothstep(.16,.0,d);float k=smoothstep(.3,.26,d);float rim=smoothstep(.4,.36,d)*smoothstep(.28,.33,d);
-gl_FragColor=vec4(vC*(h*(.8-.5*uX)+c*1.4+uX*(k*.8+rim*.7))*vI*uG,1.);}`});
+float h=pow(1.-d*2.,2.);float c=smoothstep(.22,.0,d);float k=smoothstep(.3,.26,d);float rim=smoothstep(.4,.36,d)*smoothstep(.28,.33,d);float ring=smoothstep(.5,.45,d)*smoothstep(.3,.38,d);
+gl_FragColor=vec4(vC*(h*(1.1-.6*uX)+c*1.9+ring*.7+uX*(k*.8+rim*.7))*vI*uG,1.);}`});
 const edgeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute float aT;attribute float aI;attribute float aPh;attribute vec3 aCol;uniform float uT;varying float vA;varying vec3 vC;
 void main(){vA=aI*mix(.55,1.,aT);vC=aCol;
@@ -322,13 +356,13 @@ fragmentShader:`uniform float uG;varying float vA;varying vec3 vC;void main(){gl
 const TR=7,PN=TR*2; // comet: 7 points per particle, 2 particles per edge
 const dotMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute vec3 aB;attribute vec3 aCol;attribute float aPh;attribute float aI;attribute float aDir;attribute float aLag;attribute float aK;uniform float uT;uniform float uH;uniform float uX;varying float vI;varying float vH;varying vec3 vC;
-void main(){float len=length(aB-position)+1e-4;float t=fract(uT*.09/len+aPh);float d=t*len-aLag*.014;float f=d/len;
+void main(){float len=length(aB-position)+1e-4;float t=fract(uT*.05/len+aPh);float d=t*len-aLag*.014;float f=d/len;
 float on=step(0.,d)*step(.02,aI)*step(aK*.55,aI);float fc=clamp(f,0.,1.);vec3 p=mix(position,aB,aDir>.5?1.-fc:fc);vec4 mv=modelViewMatrix*vec4(p,1.);
 float tail=pow(1.-aLag/7.,1.6);float fade=smoothstep(0.,.14,f)*(1.-smoothstep(.86,1.,f));
-gl_PointSize=max(.0105*(.45+.55*tail)*uH*.5*projectionMatrix[1][1]/-mv.z,2.+1.5*uX);vI=on*fade*tail*min(1.,aI+.35);vH=1.-aLag/7.;vC=aCol;
+gl_PointSize=max(.0052*(.45+.55*tail)*uH*.5*projectionMatrix[1][1]/-mv.z,1.2+.8*uX);vI=on*fade*tail*min(1.,aI+.35);vH=1.-aLag/7.;vC=aCol;
 gl_Position=on>0.?projectionMatrix*mv:vec4(2.,2.,2.,1.);}`,
 fragmentShader:`uniform float uG;uniform float uX;varying float vI;varying float vH;varying vec3 vC;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;float h=pow(1.-d*2.,2.)*(1.-.4*uX);float c=smoothstep(.2+.12*uX,.0,d);
-gl_FragColor=vec4((vC*h+vec3(1.)*c*vH*vH)*vI*1.5*uG,1.);}`});
+gl_FragColor=vec4((vC*h+vec3(1.)*c*vH*vH)*vI*.4*uG,1.);}`});
 const CY=[.36,.94,1],VI=[.6,.48,1],AM=[1,.7,.28],WH=[.92,1,1],GO=[1,.84,.45];
 const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
 let pts,lines,dots,dI,dD,dC,nA,nS,nC,eI,eC,labelGroup=new THREE.Group(),fmax=1;G.add(labelGroup);
@@ -341,9 +375,9 @@ function label(i,kind){
     x.shadowColor=kind?'#ffb347':'#5df0ff';x.shadowBlur=24;x.fillStyle=kind?'#ffe2a8':'#d6fbff';x.fillText(nodes[i].word,384,96);
     const tx=new THREE.CanvasTexture(c);tx.anisotropy=8;tx.minFilter=THREE.LinearMipmapLinearFilter;tx.colorSpace=THREE.SRGBColorSpace;
     const m=new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false,blending:THREE.AdditiveBlending});
-    s=new THREE.Sprite(m);s.scale.set(.16,.04,1);s.renderOrder=10;labelCache.set(key,s);
+    s=new THREE.Sprite(m);s.scale.set(.2,.05,1);s.renderOrder=10;labelCache.set(key,s);
   }
-  s.position.set(nodes[i].x,nodes[i].y+.035,nodes[i].z);return s;
+  s.position.set(nodes[i].x,nodes[i].y+.045,nodes[i].z);return s;
 }
 function buildVisuals(){
   if(pts){G.remove(pts,lines,dots);pts.geometry.dispose();lines.geometry.dispose();dots.geometry.dispose();}
@@ -383,20 +417,20 @@ function applyState(){
     for(let e=0;e<E;e++){ei[e]=Q.eI[e];ec[e]=Q.eI[e]>.02?1:0;}
     Q.top.slice(0,35).forEach(i=>labs.push([i,1]));
   }else{
-    for(let i=0;i<N;i++)nI[i]=.16+Math.pow(ni[i],1.2);
+    for(let i=0;i<N;i++)nI[i]=.55+.9*Math.pow(ni[i],1);
     for(let e=0;e<E;e++)ei[e]=(.04+.14*edges[e].wn)*(.45+.9*(nodes[edges[e].s].nf+nodes[edges[e].t].nf)/2);
-    nodes.map((n,i)=>i).sort((a,b)=>nodes[b].score-nodes[a].score).slice(0,22).forEach(i=>labs.push([i,0]));
+    nodes.map((n,i)=>i).sort((a,b)=>nodes[b].score-nodes[a].score).slice(0,40).forEach(i=>labs.push([i,0]));
   }
   const pre=nI.slice();
   if(sel>=0){
-    for(let i=0;i<N;i++)nI[i]*=.3;for(let e=0;e<E;e++)ei[e]*=.15;
+    for(let i=0;i<N;i++)nI[i]*=.42;for(let e=0;e<E;e++)ei[e]*=.15;
     nI[sel]=1.3;nc[sel]=2;labs.length=0;labs.push([sel,1]);
     nodes[sel].adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w).forEach((a,r)=>{
       nI[a.j]=.95;nc[a.j]=3;ei[a.e]=.45+.8*edges[a.e].wn;ec[a.e]=2;if(r<24)labs.push([a.j,0]);});
   }
   visible=[];
   for(let i=0;i<N;i++){
-    nA[i]=nI[i];nS[i]=.010+.034*ni[i]+(nc[i]===2?.03:nc[i]===1?.012*nI[i]:0);
+    nA[i]=nI[i];nS[i]=.017+.042*ni[i]+(nc[i]===2?.03:nc[i]===1?.012*nI[i]:0);
     const col=nc[i]===2?GO:nc[i]===1?mix(CY,AM,Math.min(1,nI[i])):nc[i]===3?WH:(ni[i]<.7?mix(VI,CY,ni[i]/.7):mix(CY,WH,(ni[i]-.7)/.3));
     nC.set(col,i*3);if(nI[i]>.1||pre[i]>.1)visible.push(i);
   }
@@ -406,7 +440,7 @@ function applyState(){
     eI[k*2]=eI[k*2+1]=ei[k];eC.set(col,k*6);eC.set(col,k*6+3);
     const dir=flowQ&&Q.A[e.s]<Q.A[e.t]?1:0;
     aT.array[k*2]=dir;aT.array[k*2+1]=1-dir;
-    const act=sel>=0?(ec[k]===2?1:0):(flowQ&&ei[k]>.12?ei[k]:0);
+    const act=sel>=0?(ec[k]===2?.6:0):(flowQ&&ei[k]>.12?ei[k]:0);
     const dc=flowQ?[1,.92,.62]:[.8,1,1];
     for(let m=0;m<PN;m++){const q=k*PN+m;dI[q]=act;dD[q]=dir;dC.set(dc,q*3);}
   });
@@ -431,10 +465,10 @@ function runQuery(text){
     pq[e.s].forEach((v,q)=>{ov+=Math.min(v,pq[e.t].get(q)||0);});
     ov=(ov+.25*Math.min(A[e.s],A[e.t]))*(.4+.6*e.wn);eIv[k]=ov;mo=Math.max(mo,ov);});
   for(let k=0;k<E;k++)eIv[k]=eIv[k]>0?.1+.95*Math.pow(eIv[k]/mo,.8):.008;
-  Q={A,show,top,eI:eIv,terms:res.seeds.map(s=>s.q)};sel=-1;applyState();
+  Q={A,show,top,eI:eIv,terms:res.seeds.map(s=>s.q)};sel=-1;applyState();if(!replaying)pushHist(queryEntry(text,top,A,eIv));
   stat(`Leap 1 found ${n1} words, leap 2 found ${n2} more${miss?` (${miss} outside the drawn field)`:''}. Lights travel the direction the query spreads; brighter edges carry more overlap.`);
 }
-function select(i){sel=i;applyState();}
+function select(i){sel=i;applyState();if(i>=0&&!replaying)pushHist(selectEntry(i));}
 function clearAll(){sel=-1;Q=null;$q.value='';applyState();if(nodes.length)stat(summary());}
 
 /* ---------- UI ---------- */
@@ -457,13 +491,19 @@ async function load(files){
   const docs=[];for(const f of files)docs.push({name:f.name,text:await f.text()});
   ingest(docs);
 }
-function ingest(docs){
-  stat('Building field…');
-  setTimeout(()=>{
-    resetCorpus();docs.forEach(d=>corp.push(encode(d.text)));foldPlurals();recount();docCount=docs.length;buildField();
-    if(nodes.length<3){stat('Not enough repeated concepts. Attach longer text.');return;}
-    buildVisuals();stat(summary());
-  },30);
+function ingest(docs,opts={}){
+  return new Promise(res=>{
+    stat('Building field…');
+    setTimeout(()=>{
+      resetCorpus();docs.forEach(d=>corp.push(encode(d.text)));foldPlurals();recount();docCount=docs.length;buildField();
+      if(nodes.length<3){stat('Not enough repeated concepts. Attach longer text.');res(false);return;}
+      buildVisuals();stat(summary());
+      curCorpus=opts.id||hashDocs(docs);
+      if(!opts.noSave)saveCorpus(docs,curCorpus);
+      try{localStorage.setItem('cf.last',curCorpus);}catch(e){}
+      res(true);
+    },30);
+  });
 }
 $('#file').addEventListener('change',e=>load(e.target.files));
 addEventListener('dragover',e=>e.preventDefault());
@@ -811,6 +851,132 @@ function sticks(dt){
     }
   }
 }
+/* ---------- persistence + history ---------- */
+let db=null;
+const dbP=new Promise(res=>{try{const r=indexedDB.open('conceptfield',1);
+  r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('corpora',{keyPath:'id'});d.createObjectStore('history',{keyPath:'id'});};
+  r.onsuccess=()=>{db=r.result;res(db);};r.onerror=r.onblocked=()=>res(null);}catch(e){res(null);}});
+const dbReq=(st,m,f)=>new Promise(res=>{if(!db)return res(undefined);try{const q=f(db.transaction(st,m).objectStore(st));q.onsuccess=()=>res(q.result);q.onerror=()=>res(undefined);}catch(e){res(undefined);}});
+const dbAll=st=>dbReq(st,'readonly',o=>o.getAll()).then(r=>r||[]);
+const dbPut=(st,v)=>dbReq(st,'readwrite',o=>o.put(v));
+const dbDel=(st,k)=>dbReq(st,'readwrite',o=>o.delete(k));
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist();}catch(e){}
+function hashDocs(docs){let h=2166136261;for(const d of docs){const t=d.name+'\u0001'+d.text+'\u0002';for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619);}}
+  return 'c'+(h>>>0).toString(36)+docs.reduce((a,d)=>a+d.text.length,0).toString(36);}
+async function saveCorpus(docs,id){
+  await dbP;
+  const c={id,ts:Date.now(),name:docs.map(d=>d.name).join(', ')||'untitled',docs,size:docs.reduce((a,d)=>a+d.text.length,0)};
+  await dbPut('corpora',c);
+  const i=corpora.findIndex(x=>x.id===id);if(i>=0)corpora[i]=c;else corpora.push(c);
+  renderHist();
+}
+async function pushHist(e){
+  if(replaying||!curCorpus)return;
+  const last=hist[0];
+  if(last&&last.kind===e.kind&&last.text===e.text&&last.corpus===curCorpus&&Date.now()-last.ts<60000)return;
+  e.id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);e.ts=Date.now();e.corpus=curCorpus;
+  hist.unshift(e);
+  await dbP;await dbPut('history',e);
+  while(hist.length>500){const o=hist.pop();dbDel('history',o.id);}
+  renderHist();
+}
+function queryEntry(text,top,A,eIv){
+  const links=edges.map((e,k)=>[e,eIv[k]]).filter(x=>x[1]>.1).sort((a,b)=>b[1]-a[1]).slice(0,14)
+    .map(([e,v])=>({a:nodes[e.s].word,b:nodes[e.t].word,v:+v.toFixed(2)}));
+  return {kind:'query',text:text.trim(),terms:Q.terms.slice(),top:top.slice(0,14).map(i=>({w:nodes[i].word,a:+A[i].toFixed(2)})),links};
+}
+function selectEntry(i){
+  const n=nodes[i],adj=n.adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w).slice(0,12);
+  return {kind:'select',text:n.word,terms:[n.word],top:adj.map(a=>({w:nodes[a.j].word,a:+edges[a.e].wn.toFixed(2)})),
+    links:adj.map(a=>{const e=edges[a.e];return {a:nodes[e.s].word,b:nodes[e.t].word,v:+e.wn.toFixed(2)};})};
+}
+async function openEntry(h,word){
+  replaying=true;
+  try{
+    if(h.corpus!==curCorpus){
+      const c=corpora.find(x=>x.id===h.corpus);
+      if(!c){stat('The files for this result were deleted.');return;}
+      if(!await ingest(c.docs,{id:c.id,noSave:true}))return;
+    }
+    if(h.kind==='query'){$q.value=h.text;runQuery(h.text);}
+    else{const k=nodes.findIndex(n=>n.word===h.text);if(k>=0)select(k);}
+    if(word){const k=nodes.findIndex(n=>n.word===word);if(k>=0)select(k);}
+  }finally{replaying=false;}
+}
+const esc=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function ago(t){const s=(Date.now()-t)/1000;if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return new Date(t).toLocaleDateString();}
+const cname=id=>{const c=corpora.find(c=>c.id===id);return c?c.name:'deleted file set';};
+const $hist=$('#hist'),$hb=$('#hbody'),$hf=$('#hf');
+let htab='res',hfilter='';
+function posHist(){$hist.style.top=($('#top').getBoundingClientRect().bottom+10)+'px';}
+addEventListener('resize',()=>{if(!$hist.hidden)posHist();});
+function toggleHist(force){const open=force===undefined?$hist.hidden:force;$hist.hidden=!open;document.body.classList.toggle('hopen',open);if(open){posHist();renderHist();}}
+function resHTML(){
+  if(!hist.length)return '<div class="hs">No results yet. Run a query or click a concept and it is saved here automatically.</div>';
+  const cnt=new Map();
+  hist.forEach(h=>{const ws=new Set(h.top.map(t=>t.w));if(h.kind==='select')ws.add(h.text);ws.forEach(w=>cnt.set(w,(cnt.get(w)||0)+1));});
+  const rec=[...cnt].filter(x=>x[1]>=2).sort((a,b)=>b[1]-a[1]).slice(0,14);
+  const f=hfilter.trim().toLowerCase();
+  const list=hist.filter(h=>!f||h.text.toLowerCase().includes(f)||h.top.some(t=>t.w.includes(f))||h.links.some(l=>l.a.includes(f)||l.b.includes(f)));
+  let o='';
+  if(rec.length)o+=`<div class="hs">Recurring across results (click to filter)</div><div class="chips">${rec.map(([w,n])=>`<span class="chip hot" data-f="${esc(w)}">${esc(w)} <small>\u00d7${n}</small></span>`).join('')}</div>`;
+  o+=`<div class="hs" style="margin:6px 0 8px">${list.length} of ${hist.length} saved results. Amber words appear in more than one result.</div>`;
+  o+=list.map(h=>{
+    const chip=w=>`<span class="chip${cnt.get(w)>1?' hot':''}" data-w="${esc(w)}">${esc(w)}</span>`;
+    return `<div class="he" data-id="${h.id}"><div class="hh"><span class="k ${h.kind==='query'?'q':'s'}">${h.kind==='query'?'QUERY':'CONCEPT'}</span><b>${esc(h.text)}</b><span class="t">${ago(h.ts)}</span></div>`+
+      `<div class="hs">${esc(cname(h.corpus))}</div><div class="chips">${h.top.slice(0,12).map(t=>chip(t.w)).join('')}</div>`+
+      (h.links.length?`<details><summary>Connections (${h.links.length})</summary><ul class="lk">${h.links.map(l=>`<li data-w="${esc(l.a)}"><em>${esc(l.a)} \u2194 ${esc(l.b)}</em><span>${l.v.toFixed(2)}</span></li>`).join('')}</ul></details>`:'')+
+      `<div class="ha"><button data-a="open">Restore</button><button data-a="del">Delete</button></div></div>`;
+  }).join('');
+  return o;
+}
+function fileHTML(){
+  const L=corpora.slice().sort((a,b)=>b.ts-a.ts);
+  if(!L.length)return '<div class="hs">No saved files yet. Attached files are stored in this browser and reload automatically.</div>';
+  return '<div class="hs" style="margin-bottom:8px">Stored in this browser. Your last file set reloads automatically.</div>'+
+    L.map(c=>`<div class="he" data-c="${c.id}"><div class="hh"><b>${esc(c.name)}</b>${c.id===curCorpus?'<span class="k s">ACTIVE</span>':''}</div><div class="hs">${c.docs.length} file${c.docs.length===1?'':'s'} \u00b7 ${(c.size/1024).toFixed(1)} KB \u00b7 ${ago(c.ts)} \u00b7 ${hist.filter(h=>h.corpus===c.id).length} results</div><div class="ha"><button data-a="load">Load</button><button data-a="delc">Delete</button></div></div>`).join('');
+}
+function renderHist(){
+  if($hist.hidden)return;
+  $hist.querySelectorAll('.htabs [data-t]').forEach(b=>b.classList.toggle('on',b.dataset.t===htab));
+  $hf.hidden=htab!=='res';$('#hclr').hidden=htab!=='res';
+  const st=$hb.scrollTop;$hb.innerHTML=htab==='res'?resHTML():fileHTML();$hb.scrollTop=st;
+}
+$('#hbtn').onclick=()=>toggleHist();
+$('#hx').onclick=()=>toggleHist(false);
+$('#hclr').onclick=async()=>{if(!hist.length||!confirm('Delete all saved results? Your files are kept.'))return;for(const h of hist)await dbDel('history',h.id);hist=[];renderHist();};
+$hist.querySelector('.htabs').addEventListener('click',e=>{const t=e.target.closest('[data-t]');if(t){htab=t.dataset.t;renderHist();}});
+$hf.addEventListener('input',()=>{hfilter=$hf.value;renderHist();});
+$hb.addEventListener('click',async e=>{
+  const fc=e.target.closest('[data-f]');if(fc){$hf.value=hfilter=fc.dataset.f;renderHist();return;}
+  const card=e.target.closest('.he');if(!card)return;
+  const btn=e.target.closest('button[data-a]'),w=e.target.closest('[data-w]');
+  if(card.dataset.c){
+    const c=corpora.find(x=>x.id===card.dataset.c);if(!c||!btn)return;
+    if(btn.dataset.a==='load')await ingest(c.docs,{id:c.id});
+    else if(confirm('Delete these saved files and their saved results?')){
+      corpora=corpora.filter(x=>x!==c);await dbDel('corpora',c.id);
+      for(const h of hist.filter(h=>h.corpus===c.id))await dbDel('history',h.id);
+      hist=hist.filter(h=>h.corpus!==c.id);
+      if(curCorpus===c.id){curCorpus=null;try{localStorage.removeItem('cf.last');}catch(_){}}
+      renderHist();
+    }
+    return;
+  }
+  const h=hist.find(x=>x.id===card.dataset.id);if(!h)return;
+  if(btn&&btn.dataset.a==='del'){hist=hist.filter(x=>x!==h);await dbDel('history',h.id);renderHist();return;}
+  if(btn||w)openEntry(h,w?w.dataset.w:null);
+});
+(async()=>{
+  await dbP;
+  (await dbAll('corpora')).forEach(c=>{if(!corpora.some(x=>x.id===c.id))corpora.push(c);});
+  (await dbAll('history')).forEach(h=>{if(!hist.some(x=>x.id===h.id))hist.push(h);});
+  hist.sort((a,b)=>b.ts-a.ts);
+  let id=null;try{id=localStorage.getItem('cf.last');}catch(e){}
+  const c=corpora.find(x=>x.id===id);
+  if(c&&!nodes.length&&!curCorpus){if(await ingest(c.docs,{id:c.id,noSave:true}))stat(summary()+' Restored from your last session.');}
+  renderHist();
+})();
 /* ---------- loop ---------- */
 const clock=new THREE.Clock();
 renderer.setAnimationLoop((t,frame)=>{
