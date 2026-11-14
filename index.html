@@ -24,12 +24,12 @@ button:focus-visible,.btn:focus-within,input:focus-visible{outline:2px solid var
 input[type=text]{flex:1;min-width:0;font:inherit;color:var(--ink);background:rgba(0,0,0,.4);border:1px solid rgba(93,240,255,.4);padding:8px 10px;font-size:14px;border-radius:2px}
 input[type=file]{position:absolute;opacity:0;width:0;height:0}
 #stat{font-size:12px;opacity:.75;margin-top:8px;line-height:1.4}
-#info{right:14px;top:14px;width:min(300px,calc(100vw - 28px));max-height:60vh;overflow:auto;font-size:13px;display:none}
+#info{right:14px;top:14px;width:min(300px,calc(100vw - 28px));max-height:calc(100vh - 28px);overflow:auto;font-size:13px;display:none}
 #info h2{margin:0 0 6px;font-size:20px;color:var(--am);text-shadow:0 0 10px rgba(255,179,71,.6)}
 #info li{margin:2px 0;list-style:none;display:flex;justify-content:space-between;gap:10px}
 #info ul{margin:6px 0 0;padding:0}
 #info .w{opacity:.6}
-#hint{bottom:14px;left:14px;font-size:12px;opacity:.8;max-width:min(520px,calc(100vw - 150px));line-height:1.45}
+#hint{bottom:58px;left:14px;font-size:12px;opacity:.8;max-width:min(520px,calc(100vw - 150px));line-height:1.45}
 #VRButton{background:rgba(3,16,28,.8)!important;border:1px solid var(--cy)!important;color:var(--cy)!important;font-family:inherit!important;border-radius:2px!important}
 
 #hist{left:14px;top:230px;bottom:14px;width:min(380px,calc(100vw - 28px));display:flex;flex-direction:column;padding:0;overflow:hidden}
@@ -59,6 +59,15 @@ body.hopen #hint{display:none}
 .lk span{opacity:.6}
 .ha{display:flex;gap:6px;margin-top:6px}
 .ha button{padding:3px 8px;font-size:12px}
+#helpbtn{position:fixed;left:14px;bottom:14px;width:36px;height:36px;padding:0;border-radius:50%;font-weight:600;font-size:16px;background:rgba(3,16,28,.7);backdrop-filter:blur(10px)}
+body.hopen #helpbtn{display:none}
+#spd{min-width:48px;padding:7px 8px}
+#info li{cursor:pointer}
+#info li:hover{color:var(--am)}
+#tl{align-items:center;flex-wrap:nowrap}
+#tl button{min-width:68px}
+#tlr{flex:1;min-width:0;accent-color:var(--am)}
+#tlc{font-size:12px;opacity:.8;min-width:56px;text-align:right}
 </style>
 </head>
 <body>
@@ -72,6 +81,7 @@ body.hopen #hint{display:none}
   </div>
   <form id="qf" class="row"><input id="q" type="text" placeholder="Ask about your text, e.g. how does heat affect the ocean?" autocomplete="off"><button type="submit">Ask</button><button type="button" id="mic" hidden>Voice</button></form>
   <div class="row"><button id="clr">Clear query &amp; selection</button><button id="ctx" title="Remove the attached text and its saved copy">Clear text</button><button id="hbtn">History</button></div>
+  <div class="row" id="tl" hidden><button id="play" title="Reveal words one by one, strongest resonance with your query or selection first">Play</button><input id="tlr" type="range" min="0" max="0" value="0" step="1" aria-label="Resonance timeline"><span id="tlc">0/0</span><button id="spd" title="Playback speed">1×</button></div>
   <div id="stat">Attach one or more text files to build the field.</div>
 </div>
 <div id="info" class="panel"></div>
@@ -80,7 +90,8 @@ body.hopen #hint{display:none}
   <input id="hf" type="text" placeholder="Filter by word or query…" autocomplete="off">
   <div id="hbody"></div>
 </div>
-<div id="hint" class="panel">Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click a concept to select. VR: a query bar, keyboard and a results box float in view (point and pinch or trigger the bar to type, or tap Voice). Mixed reality (Quest 3): press Enter mixed reality to see your room through the passthrough cameras. Pinch and drag anywhere to move the data sphere, pinch with both hands and spread to resize, quick pinch on a concept to select it. The field remembers where you put it between mixed-reality sessions. Sticks fly in VR. A adds the selected concept to the query, B clears. Press Place on the panel to snap the field onto a wall, table or floor. Line colour runs violet to cyan to amber to white as a connection gets stronger.</div>
+<button id="helpbtn" aria-label="Help" aria-expanded="false" title="Help">?</button>
+<div id="hint" class="panel" hidden>Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click a concept to select. Every word you type is searched, including common words like the or not; only the drawn field hides them. VR: a query bar, keyboard and a results box float in view (point and pinch or trigger the bar to type, or tap Voice). Mixed reality (Quest 3): press Enter mixed reality to see your room through the passthrough cameras. Pinch and drag anywhere to move the data sphere, pinch with both hands and spread to resize, quick pinch on a concept to select it. The field remembers where you put it between mixed-reality sessions. Sticks fly in VR. A adds the selected concept to the query, B clears. Press Place on the panel to snap the field onto a wall, table or floor. Line colour runs violet to cyan to amber to white as a connection gets stronger. Once you have a query or selection, a Play button, timeline and speed button appear: words appear one by one, strongest resonance first (the speed button cycles 0.25x to 4x). The results box scrolls: thumbstick while pointing at it, or pinch-drag it; tap a row to select that word.</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -107,24 +118,26 @@ const FILL=1,BRKP=.9,MAXBRK=40;
 /* ---------- corpus: same encoding as the symbol transformer ---------- */
 let corp=[],vocab=['','\u0001'],cfreq=[0,0],cIdf=new Float32Array(0),CN=0,LT=1,HZ=120,DEC=[],PMIN=25,DOCW=80,exclC=null;
 const rawId=new Map();
+let svocab=[''],sfreq=[0];const srawId=new Map(); // stop words: hidden from the field, but still indexed so they can be searched
+function sidFor(e){let t=srawId.get(e);if(t===undefined){t=svocab.length;svocab.push(e);srawId.set(e,t);}return t;}
 function setRange(h,a){HZ=h;DEC=Array.from({length:h+1},(_,s)=>s?Math.pow(s,-a):0);}
-function resetCorpus(){corp=[];vocab=['','\u0001'];cfreq=[0,0];rawId.clear();exclC=null;}
+function resetCorpus(){corp=[];vocab=['','\u0001'];cfreq=[0,0];rawId.clear();exclC=null;svocab=[''];sfreq=[0];srawId.clear();}
 function idFor(e){let t=rawId.get(e);if(t!==undefined)return t;
   if(e.charCodeAt(0)<58?e.length>15:(e.length<2||STOP.has(e)||junkW(e))){rawId.set(e,-1);return -1;}
   t=vocab.length;vocab.push(e);cfreq.push(0);rawId.set(e,t);return t;}
 function encode(text){
-  const ids=[],pol=[];let n=0;
+  const ids=[],pol=[],sw=[];let n=0;
   const src=text.replace(/[\u2018\u2019]/g,"'").replace(/[\u2010\u2011]/g,'-').toLowerCase();
   for(const m of src.matchAll(TOKRE)){
-    const e=m[0],c=e.charCodeAt(0);let id=0,pf=0;
-    if(c>=97){if(!BREAKW.has(e)){id=idFor(e);if(id<0)id=FILL;}}
+    const e=m[0],c=e.charCodeAt(0);let id=0,pf=0,sid=0;
+    if(c>=97){if(!BREAKW.has(e)){id=idFor(e);if(id<0){id=FILL;sid=sidFor(e);}}else sid=sidFor(e);}
     else if(c>=48&&c<=57){id=idFor(e.replace(/,/g,''));if(id<0)id=FILL;}
     else if(e===','){id=FILL;pf=4;}
     if(c===10)pf|=32;
-    if(id!==0||(ids.length&&ids[ids.length-1]!==0)){ids.push(id);pol.push(pf);if(id>FILL)n++;}
+    if(id!==0||(ids.length&&ids[ids.length-1]!==0)){ids.push(id);pol.push(pf);sw.push(sid);if(id>FILL)n++;}
     else if(c===10&&pol.length)pol[pol.length-1]|=32;
   }
-  return {ids:Uint32Array.from(ids),pol:Uint8Array.from(pol),n};
+  return {ids:Uint32Array.from(ids),pol:Uint8Array.from(pol),sw:Uint32Array.from(sw),n};
 }
 function foldPlurals(){ // plural forms count as their singular when the singular occurs
   const rm=Uint32Array.from({length:vocab.length},(_,i)=>i);let any=false;
@@ -136,6 +149,7 @@ function foldPlurals(){ // plural forms count as their singular when the singula
 }
 function recount(){
   cfreq=new Array(vocab.length).fill(0);CN=0;LT=0;
+  sfreq=new Array(svocab.length).fill(0);corp.forEach(d=>{for(let i=0;i<d.sw.length;i++)if(d.sw[i])sfreq[d.sw[i]]++;});
   corp.forEach(d=>{const t=d.ids;LT+=t.length;for(let i=1;i<t.length;i++)cfreq[t[i]]++;if(t.length&&t[0])cfreq[t[0]]++;CN+=d.n;});
   const L=[];
   corp.forEach(d=>{let r=0;const t=d.ids,s=d.pol;for(let a=0;a<t.length;a++){if(t[a]===0){if(s[a]&32){r&&L.push(r);r=0;}}else if(t[a]>FILL)r++;}r&&L.push(r);});
@@ -153,7 +167,7 @@ function recount(){
     else cIdf[i]=Math.max(0,Math.log(1+1/(3*(cfreq[i]/Math.max(1,CN))+.005)));}
   corp.forEach(d=>{const t=d.ids,p=d.pol,a=[],o=[];let i=0;
     for(let e=0;e<t.length;e++){if(t[e]===0){if(p[e]&32){a.push(e);o.push(i);i=0;}}else i++;}
-    o.push(i);const m=new Map();for(let e=0;e<a.length;e++)m.set(a[e],Math.min(o[e],o[e+1])<PMIN);d.pb=m;d.post=null;});
+    o.push(i);const m=new Map();for(let e=0;e<a.length;e++)m.set(a[e],Math.min(o[e],o[e+1])<PMIN);d.pb=m;d.post=null;d.spost=null;});
   exclC=new Uint8Array(vocab.length);
   for(let e=1;e<vocab.length;e++)if(vocab[e].charCodeAt(0)<58||STRUCT.has(vocab[e]))exclC[e]=1;exclC[FILL]=1;
 }
@@ -163,16 +177,17 @@ function eachBwd(l,t,fn,start,pb){const a=Math.max(start,t-HZ);let o=0,i=1;
   for(let s=t-1;s>=a;s--){const x=l[s];if(x!==0){if(x>FILL)fn(s,t-s,i);}else{if(++o>MAXBRK)break;const e=pb&&pb.get(s);i*=e===undefined?BRKP:e?.5:0;if(i===0)break;}}}
 /* distance-decayed co-occurrence scan around each term, lift-scored (symbol transformer's leapScan) */
 function leapScan(terms,excl){
-  const n=vocab.length,s=new Uint16Array(n),SD=new Map();
+  const n=vocab.length,s=new Uint16Array(n),ss=new Uint16Array(svocab.length),SD=new Map(),hasS=terms.some(e=>e.sids&&e.sids.length);
   const R=terms.map(()=>({acc:new Map(),raw:new Map(),fp:new Map(),fw:new Map(),hits:0}));
-  terms.forEach((e,t)=>{let c=0;e.ids.forEach(x=>{s[x]=t+1;c+=cfreq[x];});e.stride=Math.max(1,Math.ceil(c/4e4));});
+  terms.forEach((e,t)=>{let c=0;e.ids.forEach(x=>{s[x]=t+1;c+=cfreq[x];});(e.sids||[]).forEach(x=>{ss[x]=t+1;c+=sfreq[x];});e.stride=Math.max(1,Math.ceil(c/4e4));});
   let off=0;
   for(const d of corp){
     const l=d.ids,h=l.length,base=off;off+=h;
     if(!d.post){const m=new Map();for(let k=0;k<h;k++){const x=l[k];if(x>FILL){const q=m.get(x);q?q.push(k):m.set(x,[k]);}}d.post=m;}
-    const u=[];terms.forEach(e=>e.ids.forEach(id=>{const p=d.post.get(id);if(p)for(const k of p)u.push(k);}));u.sort((a,b)=>a-b);
+    if(hasS&&!d.spost){const m=new Map();for(let k=0;k<h;k++){const x=d.sw[k];if(x){const q=m.get(x);q?q.push(k):m.set(x,[k]);}}d.spost=m;}
+    const u=[];terms.forEach(e=>{e.ids.forEach(id=>{const p=d.post.get(id);if(p)for(const k of p)u.push(k);});if(e.sids)e.sids.forEach(id=>{const p=d.spost.get(id);if(p)for(const k of p)u.push(k);});});u.sort((a,b)=>a-b);
     for(const o of u){
-      const g=s[l[o]]-1;if(g<0)continue;const y=terms[g],w=R[g];
+      const g=(l[o]>FILL?s[l[o]]:(d.sw[o]?ss[d.sw[o]]:0))-1;if(g<0)continue;const y=terms[g],w=R[g];
       let s0=o,e0=o;for(;s0>0&&o-s0<60&&l[s0-1]!==0;)s0--;for(;e0<h-1&&e0-o<60&&l[e0+1]!==0;)e0++;
       if(e0-s0>=4){let k=2166136261;for(let q=s0;q<=e0;q++)k=Math.imul(k^l[q],16777619);k=(k>>>0)+'_'+(e0-s0);
         const at=base+s0,pv=SD.get(k);if(pv===undefined)SD.set(k,at);else if(pv!==at)continue;}
@@ -195,33 +210,36 @@ function leapScan(terms,excl){
     return {p,fp:n.fp,hits:n.hits,acc:n.acc,fw:n.fw};});
 }
 function adKeep(a){if(!a.length)return 0;const m=a.reduce((x,y)=>x+y,0)/a.length,sd=Math.sqrt(a.reduce((x,y)=>x+(y-m)*(y-m),0)/a.length),T=m-sd;return a.filter(x=>x>=T).length;}
-function leapOverlap(e,t,n,s){
+function leapOverlap(e,t,n,s,cf,nn){
   const r=t.reduce((x,y)=>x+y,0)||1,a=new Map();
   e.forEach((e,i)=>e.p.forEach((sc,id)=>{let o=a.get(id);
-    if(!o)a.set(id,o={cw:0,sw:0,n:0,per:new Map(),idx:[],fp:Infinity});
-    o.cw+=t[i];o.sw+=t[i]*sc;o.n++;o.per.set(i,sc);o.idx.push(i);
+    if(!o)a.set(id,o={cw:0,sw:0,n:0,nc:0,per:new Map(),idx:[],fp:Infinity});
+    o.cw+=t[i];o.sw+=t[i]*sc;o.n++;if(cf&&cf[i])o.nc++;o.per.set(i,sc);o.idx.push(i);
     const f=e.fp.get(id);if(f!==undefined&&f<o.fp)o.fp=f;}));
   const o=[];
-  a.forEach((e,id)=>{const c=e.cw/r;if(e.n<n||c<s)return;o.push({id,cov:c,n:e.n,idx:e.idx,per:e.per,fp:e.fp,s:Math.pow(c,1.5)*(e.sw/e.cw)});});
+  a.forEach((e,id)=>{const c=e.cw/r;if(e.n<n||c<s||(nn&&e.nc<nn))return;o.push({id,cov:c,n:e.n,idx:e.idx,per:e.per,fp:e.fp,s:Math.pow(c,1.5)*(e.sw/e.cw)});});
   return o.sort((x,y)=>y.s-x.s);
 }
 /* Leap 1 (words co-occurring with several query terms) and Leap 2 (overlap of the overlap) */
 function coocc(qWords){
   const s=vocab.length,o=new Uint8Array(s),a=[];
   qWords.forEach(t=>{
-    const ids=[];const id=rawId.get(t);
+    const ids=[],sids=[];let id=rawId.get(t);
+    if(!(id>1&&cfreq[id])&&t.endsWith("'s")){const b=rawId.get(t.slice(0,-2));if(b>1&&cfreq[b])id=b;}
     if(id>1&&cfreq[id])ids.push(id);
-    else if(t.length>=5)for(let i=2;i<s;i++){const w=vocab[i];if(cfreq[i]&&w.length>=5&&w.slice(0,5)===t.slice(0,5)&&Math.abs(w.length-t.length)<=3)ids.push(i);}
-    if(!ids.length)return;ids.forEach(x=>o[x]=1);
-    a.push({q:t,ids,f:ids.reduce((x,y)=>x+cfreq[y],0)});});
+    else{const sid=srawId.get(t);
+      if(sid&&sfreq[sid])sids.push(sid); // stop words are searched too; the field just doesn't draw them
+      else if(t.length>=5)for(let i=2;i<s;i++){const w=vocab[i];if(cfreq[i]&&w.length>=5&&w.slice(0,5)===t.slice(0,5)&&Math.abs(w.length-t.length)<=3)ids.push(i);}}
+    if(!ids.length&&!sids.length)return;ids.forEach(x=>o[x]=1);
+    a.push({q:t,ids,sids,f:ids.reduce((x,y)=>x+cfreq[y],0)+sids.reduce((x,y)=>x+sfreq[y],0)});});
   if(!a.length)return null;
   const wi=e=>Math.log(1+CN/e.f),lm=Math.max(...a.map(wi))||1;a.forEach(e=>e.w=wi(e)/lm);
   const d=new Uint8Array(s);for(let e=0;e<s;e++)d[e]=exclC[e]||o[e];
   const u=leapScan(a,d),m=a.map((_,i)=>i).filter(i=>u[i].hits>0);
   if(!m.length)return {seeds:a,M:[]};
-  const f=m.map(i=>u[i]),p=m.map(i=>a[i].w),g=m.length;
-  let y=leapOverlap(f,p,Math.min(2,g),0);
-  if(g>1&&y.length<2*g){const e=leapOverlap(f,p,1,0).filter(e=>!y.some(t=>t.id===e.id)).slice(0,2*g-y.length);y=y.concat(e).sort((x,z)=>z.s-x.s);}
+  const f=m.map(i=>u[i]),p=m.map(i=>a[i].w),g=m.length,cfl=m.map(i=>a[i].ids.length>0),gC=cfl.filter(Boolean).length;
+  let y=leapOverlap(f,p,Math.min(2,g),0,cfl,Math.min(2,gC)); // a hit must still match the content words; stop words add weight
+  if(g>1&&y.length<2*g){const e=leapOverlap(f,p,1,0,cfl,Math.min(1,gC)).filter(e=>!y.some(t=>t.id===e.id)).slice(0,2*g-y.length);y=y.concat(e).sort((x,z)=>z.s-x.s);}
   y=y.slice(0,Math.min(70,Math.max(g,adKeep(y.map(e=>e.s)))));
   const w=y[0]?y[0].s:1;y.forEach(e=>{e.s/=w;e.via=e.idx.map(i=>a[m[i]].q);});
   const v0=y.filter(e=>okw(vocab[e.id])&&!junkW(vocab[e.id])),
@@ -318,6 +336,14 @@ function layout(){
   let cx=0,cy=0,cz=0;for(let i=0;i<N;i++){cx+=P[i*3];cy+=P[i*3+1];cz+=P[i*3+2];}cx/=N;cy/=N;cz/=N;
   let mx=0;for(let i=0;i<N;i++){P[i*3]-=cx;P[i*3+1]-=cy;P[i*3+2]-=cz;mx=Math.max(mx,Math.hypot(P[i*3],P[i*3+1],P[i*3+2]));}
   for(let i=0;i<N*3;i++)P[i]/=mx;
+  /* give every word a little more room: stretch the sphere, then push apart any pair sitting too close, so each is easier to point at */
+  const SP=1.3;for(let i=0;i<N*3;i++)P[i]*=SP;
+  const dm=.62*Math.cbrt(4.19*SP*SP*SP/N);
+  for(let it=0;it<30;it++){let moved=false;
+    for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){
+      const dx=P[i*3]-P[j*3],dy=P[i*3+1]-P[j*3+1],dz=P[i*3+2]-P[j*3+2],d=Math.sqrt(dx*dx+dy*dy+dz*dz);
+      if(d<dm){const f=(dm-d)/(2*(d+1e-6));P[i*3]+=dx*f;P[i*3+1]+=dy*f;P[i*3+2]+=dz*f;P[j*3]-=dx*f;P[j*3+1]-=dy*f;P[j*3+2]-=dz*f;moved=true;}}
+    if(!moved)break;}
   nodes.forEach((n,i)=>{n.x=P[i*3];n.y=P[i*3+1];n.z=P[i*3+2];});
 }
 
@@ -406,13 +432,68 @@ function buildVisuals(){
   lg.setAttribute('aT',new THREE.BufferAttribute(et,1));lg.setAttribute('aPh',new THREE.BufferAttribute(ph,1));
   lg.setAttribute('aI',new THREE.BufferAttribute(eI,1));lg.setAttribute('aCol',new THREE.BufferAttribute(eC,3));
   lines=new THREE.LineSegments(lg,edgeMat);lines.frustumCulled=false;
-  G.add(lines,pts,dots);sel=-1;Q=null;applyState();
+  G.add(lines,pts,dots);sel=-1;Q=null;RV.cn=-1;RV.playing=false;applyState();
 }
 
 /* ---------- state / highlighting ---------- */
+/* ---------- resonance timeline: words appear one by one, strongest resonance first ---------- */
+const RV={on:false,playing:false,order:[],count:0,acc:0,cs:-2,cq:null,cn:-1,speed:1};
+const SPEEDS=[.25,.5,1,2,4],hasCtx=()=>sel>=0||!!(Q&&Q.top);
+try{const v=+localStorage.getItem('cf.spd');if(SPEEDS.includes(v))RV.speed=v;}catch(e){}
+function tlSpeed(){RV.speed=SPEEDS[(SPEEDS.indexOf(RV.speed)+1)%SPEEDS.length];try{localStorage.setItem('cf.spd',RV.speed);}catch(e){}tlUI();}
+function resonanceOrder(){
+  const N=nodes.length;
+  if(sel>=0){ // best-path resonance from the selection: strongest links first, decaying with each hop
+    const r=new Float32Array(N),done=new Uint8Array(N);r[sel]=1;
+    for(let it=0;it<N;it++){
+      let b=-1,bv=0;for(let i=0;i<N;i++)if(!done[i]&&r[i]>bv){bv=r[i];b=i;}
+      if(b<0)break;done[b]=1;
+      for(const a of nodes[b].adj){const v=r[b]*.8*(.35+.65*edges[a.e].wn);if(v>r[a.j])r[a.j]=v;}
+    }
+    return [...Array(N).keys()].filter(i=>r[i]>0).sort((a,b)=>r[b]-r[a]);
+  }
+  if(Q&&Q.top)return Q.top.slice();
+  return [...Array(N).keys()].sort((a,b)=>nodes[b].score-nodes[a].score);
+}
+function rvSync(){
+  if(RV.cn===nodes.length&&RV.cs===sel&&RV.cq===Q)return;
+  RV.cn=nodes.length;RV.cs=sel;RV.cq=Q;RV.order=resonanceOrder();RV.acc=0;
+  if(!hasCtx())RV.playing=false;
+  if(RV.playing){RV.count=0;RV.on=true;}else{RV.count=RV.order.length;RV.on=false;}
+  tlUI();
+}
+function tlReset(){RV.cn=-1;RV.playing=false;RV.order=[];RV.count=0;RV.on=false;tlUI();}
+function tlPlay(){
+  if(!nodes.length)return;rvSync();
+  if(RV.playing){RV.playing=false;tlUI();return;}
+  if(RV.count>=RV.order.length)RV.count=0;
+  RV.on=true;RV.playing=true;RV.acc=0;applyState(true);
+}
+function tlSet(v){
+  if(!nodes.length)return;rvSync();
+  RV.playing=false;RV.count=Math.max(0,Math.min(RV.order.length,Math.round(v)));RV.on=RV.count<RV.order.length;applyState(true);
+}
+function tlStep(dt){
+  if(!RV.playing)return;
+  const M=RV.order.length,rate=2*RV.speed; // words per second: 1x = 2 words/s
+  RV.acc+=dt*rate;const k=Math.floor(RV.acc);if(!k)return;RV.acc-=k;
+  RV.count=Math.min(M,RV.count+k);
+  if(RV.count>=M){RV.playing=false;RV.on=false;}
+  applyState(true);
+}
+function tlUI(){
+  const $$=s=>document.querySelector(s),p=$$('#play'),r=$$('#tlr'),c=$$('#tlc'),row=$$('#tl'),sp=$$('#spd');if(!p)return;
+  const M=RV.order.length;
+  row.hidden=!hasCtx(); // the timeline only exists once there is a query or selection to resonate with
+  p.textContent=RV.playing?'Pause':(RV.count>0&&RV.count<M?'Resume':'Play');
+  sp.textContent=RV.speed+'\u00d7';
+  r.max=M;r.value=RV.count;r.disabled=!M;c.textContent=M?`${RV.count}/${M}`:'0/0';
+  kDirty=true;
+}
 let visible=[],forcedSet=new Set();
-function applyState(){
+function applyState(quick){
   const N=nodes.length,E=edges.length;if(!N)return;
+  rvSync();
   const nI=new Float32Array(N),ni=new Float32Array(N),ei=new Float32Array(E),ec=new Uint8Array(E),nc=new Uint8Array(N),er=new Float32Array(E),ea=new Float32Array(N).fill(1);
   const labs=[];
   for(let i=0;i<N;i++){ni[i]=nodes[i].nf;}
@@ -441,19 +522,34 @@ function applyState(){
       else if(ra!==undefined||rb!==undefined){ei[k]=.04+.1*(ra!==undefined?ra:rb)*e.wn;er[k]=.08;}
     });
   }
+  /* timeline mask: words not yet reached by the playhead are hidden, the newest glows, the last few are labelled */
+  const hid=new Uint8Array(N);let newest=-1;
+  if(RV.on){
+    const ord=RV.order;
+    for(let k=RV.count;k<ord.length;k++)hid[ord[k]]=1;
+    if(sel>=0)hid[sel]=0;
+    for(let i=0;i<N;i++)if(hid[i])nI[i]=0;
+    for(let e=0;e<E;e++)if(hid[edges[e].s]||hid[edges[e].t])ei[e]=0;
+    for(let j=labs.length-1;j>=0;j--)if(hid[labs[j][0]])labs.splice(j,1);
+    if(RV.count>0){
+      newest=ord[RV.count-1];nI[newest]=Math.max(nI[newest],.9)*1.4;
+      for(let k=RV.count-1;k>=Math.max(0,RV.count-4);k--){const i=ord[k];if(!hid[i]&&!labs.some(l=>l[0]===i))labs.push([i,k===RV.count-1?1:0]);}
+    }
+  }
   visible=[];
   for(let i=0;i<N;i++){
     nA[i]=nI[i];nF[i]=sel>=0?(nc[i]>=2?1:0):(Q&&Q.A?(nc[i]===1?1:0):1);nS[i]=.017+.042*ni[i]+(nc[i]===2?.03:nc[i]===1?.012*nI[i]:0);
     const col=nc[i]===2?GO:nc[i]===1?mix(CY,AM,Math.min(1,nI[i])):nc[i]===3?WH:(ni[i]<.7?mix(VI,CY,ni[i]/.7):mix(CY,WH,(ni[i]-.7)/.3));
-    nC.set(col,i*3);if(nI[i]>.1||pre[i]>.1)visible.push(i);
+    nC.set(col,i*3);if(!hid[i]&&(nI[i]>.1||pre[i]>.1))visible.push(i);
   }
+  if(newest>=0)nS[newest]*=1.8;
   const flowQ=Q&&Q.A,aT=lines.geometry.attributes.aT;
   edges.forEach((e,k)=>{
     eI[k*2]=ei[k]*ea[e.s];eI[k*2+1]=ei[k]*ea[e.t];
     eC.set(ramp(er[k]*(.55+.45*ea[e.s])),k*6);eC.set(ramp(er[k]*(.55+.45*ea[e.t])),k*6+3); // colour runs along the line with intensity
     const dir=flowQ&&Q.A[e.s]<Q.A[e.t]?1:0;
     aT.array[k*2]=dir;aT.array[k*2+1]=1-dir;
-    const act=sel>=0?(ec[k]===2?.3+.6*er[k]:ec[k]===4?.16:0):(flowQ&&ei[k]>.12?ei[k]:0);
+    const act=(RV.on&&(hid[e.s]||hid[e.t]))?0:sel>=0?(ec[k]===2?.3+.6*er[k]:ec[k]===4?.16:0):(flowQ&&ei[k]>.12?ei[k]:0);
     const dc=(flowQ||sel>=0)?mix(ramp(er[k]),WH,.35):[.8,1,1];
     for(let m=0;m<PN;m++){const q=k*PN+m;dI[q]=act;dD[q]=dir;dC.set(dc,q*3);}
   });
@@ -461,11 +557,11 @@ function applyState(){
   for(const a of ['aI','aSize','aCol','aF'])pts.geometry.attributes[a].needsUpdate=true;
   lines.geometry.attributes.aI.needsUpdate=true;lines.geometry.attributes.aCol.needsUpdate=true;
   labelGroup.clear();labs.forEach(([i,k])=>labelGroup.add(label(i,k)));forcedSet=new Set(labs.map(l=>l[0]));
-  updateInfo();
+  if(quick){kDirty=true;tlUI();}else updateInfo();
 }
 function runQuery(text){
   if(!nodes.length){stat('Build the field first.');return;}
-  const words=[...new Set([...text.toLowerCase().replace(/[\u2018\u2019]/g,"'").matchAll(TOKRE)].map(m=>m[0]).filter(w=>w.charCodeAt(0)>=97&&w.length>1&&!STOP.has(w)&&!BREAKW.has(w)&&!junkW(w)))];
+  const words=[...new Set([...text.toLowerCase().replace(/[\u2018\u2019]/g,"'").matchAll(TOKRE)].map(m=>/^\d/.test(m[0])?m[0].replace(/,/g,''):m[0]).filter(w=>/^[\p{L}\p{M}\d]/u.test(w)))];
   const res=coocc(words);
   if(!res){Q=null;applyState();stat('None of those words occur in your text. Try terms from it.');return;}
   const N=nodes.length,E=edges.length,A=new Float32Array(N),show=new Uint8Array(N),pq=new Array(N);let miss=0,n1=0,n2=0;
@@ -491,12 +587,12 @@ const summary=()=>`${nodes.length} concepts, ${edges.length} links from ${docCou
 let docCount=0;
 function updateInfo(){
   if(sel>=0){
-    const n=nodes[sel],c=n.adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w).slice(0,10);
+    const n=nodes[sel],c=n.adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w);
     $info.style.display='block';
-    $info.innerHTML=`<h2>${n.word}</h2><div>${n.freq} mentions, ${n.adj.length} links</div><ul>${c.map(a=>{const e=edges[a.e];return `<li><span>${e.s===sel?'→':'←'} ${nodes[a.j].word}</span><span class="w">${e.w.toFixed(2)}</span></li>`;}).join('')}</ul>`;
+    $info.innerHTML=`<h2>${n.word}</h2><div>${n.freq} mentions, ${n.adj.length} links</div><ul>${c.map(a=>{const e=edges[a.e];return `<li data-i="${a.j}"><span>${e.s===sel?'→':'←'} ${nodes[a.j].word}</span><span class="w">${e.w.toFixed(2)}</span></li>`;}).join('')}</ul>`;
   }else if(Q&&Q.top){
     $info.style.display='block';
-    $info.innerHTML=`<h2>Query</h2><div>${Q.terms.join(', ')}</div><ul>${Q.top.slice(0,10).map(i=>`<li><span>${nodes[i].word}</span><span class="w">${Q.A[i].toFixed(2)}</span></li>`).join('')}</ul>`;
+    $info.innerHTML=`<h2>Query</h2><div>${Q.terms.join(', ')} · ${Q.top.length} words</div><ul>${Q.top.map(i=>`<li data-i="${i}"><span>${nodes[i].word}</span><span class="w">${Q.A[i].toFixed(2)}</span></li>`).join('')}</ul>`;
   }else $info.style.display='none';
   hud();
 }
@@ -523,17 +619,22 @@ addEventListener('dragover',e=>e.preventDefault());
 addEventListener('drop',e=>{e.preventDefault();load(e.dataTransfer.files);});
 $('#qf').addEventListener('submit',e=>{e.preventDefault();runQuery($q.value);});
 $('#clr').onclick=clearAll;
+$('#play').onclick=tlPlay;
+$('#spd').onclick=tlSpeed;
+$('#helpbtn').onclick=()=>{const h=$('#hint');h.hidden=!h.hidden;$('#helpbtn').setAttribute('aria-expanded',String(!h.hidden));};
+$('#tlr').addEventListener('input',e=>tlSet(+e.target.value));
+$info.addEventListener('click',e=>{const li=e.target.closest('li[data-i]');if(li)select(+li.dataset.i);});
 /* ---------- XR panel: status strip, query bar and keyboard, kept low in view ---------- */
 let needCenter=false,arMode=false,placing=false,placedOnce=false,arScale=null,lastHit=false,reqLook=null,sessAR=false,centerS=.3,xrNote='';
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let listening=false,vRec=null,vFinal=false,vErr=false;
 let hudA='Concept field',hudB='';
-const KW=1024,KH=456,KEYS=[];
+const KW=1024,KH=532,KEYS=[];
 const kc=document.createElement('canvas');kc.width=KW;kc.height=KH;
 const kctx=kc.getContext('2d'),ktex=new THREE.CanvasTexture(kc);ktex.colorSpace=THREE.SRGBColorSpace;ktex.anisotropy=4;
 const kb=new THREE.Mesh(new THREE.PlaneGeometry(.64,.64*KH/KW),new THREE.MeshBasicMaterial({map:ktex,transparent:true,depthTest:false}));
 kb.renderOrder=30;kb.visible=false;kb.frustumCulled=false;scene.add(kb);
 /* results box: the same words the 2D info panel shows (selection's neighbours or the query's top words), with connection-strength bars */
-const IW=640,IH=700,FNT='"Chakra Petch",system-ui,sans-serif';
+const IW=640,IH=720,HEAD=110,ROW=52,VIS=11,FNT='"Chakra Petch",system-ui,sans-serif';
 const ic=document.createElement('canvas');ic.width=IW;ic.height=IH;
 const ictx=ic.getContext('2d'),itex=new THREE.CanvasTexture(ic);itex.colorSpace=THREE.SRGBColorSpace;itex.anisotropy=4;
 const ib=new THREE.Mesh(new THREE.PlaneGeometry(.4,.4*IH/IW),new THREE.MeshBasicMaterial({map:itex,transparent:true,depthTest:false}));
@@ -541,30 +642,42 @@ ib.renderOrder=30;ib.visible=false;ib.frustumCulled=false;scene.add(ib);
 let kDirty=true,iDirty=true,infoCache=null,kbOpen=false,pressK=null,pressT=0,lastPh=0,hsig='';
 function infoData(){
   if(sel>=0){
-    const n=nodes[sel],c=n.adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w).slice(0,10),mx=Math.max(1e-6,...c.map(a=>edges[a.e].w));
-    return {t:n.word,s:`${n.freq} mentions, ${n.adj.length} links`,rows:c.map(a=>{const e=edges[a.e];return {l:(e.s===sel?'\u2192 ':'\u2190 ')+nodes[a.j].word,v:e.w/mx,n:e.w.toFixed(2)};})};
+    const n=nodes[sel],c=n.adj.slice().sort((a,b)=>edges[b.e].w-edges[a.e].w),mx=Math.max(1e-6,...c.map(a=>edges[a.e].w));
+    return {key:'s'+sel,t:n.word,s:`${n.freq} mentions, ${n.adj.length} links`,rows:c.map(a=>{const e=edges[a.e];return {i:a.j,l:(e.s===sel?'\u2192 ':'\u2190 ')+nodes[a.j].word,v:e.w/mx,n:e.w.toFixed(2)};})};
   }
-  if(Q&&Q.top)return {t:'Query',s:Q.terms.join(', '),rows:Q.top.slice(0,10).map(i=>({l:nodes[i].word,v:Q.A[i],n:Q.A[i].toFixed(2)}))};
+  if(Q&&Q.top)return {key:'q'+Q.terms.join(' '),t:'Query',s:Q.terms.join(', '),rows:Q.top.map(i=>({i,l:nodes[i].word,v:Q.A[i],n:Q.A[i].toFixed(2)}))};
   return null;
 }
+let iScroll=0,ibHot=false;
+const iMax=()=>Math.max(0,(infoCache?infoCache.rows.length:0)-VIS);
+function setScroll(v){const n=Math.max(0,Math.min(iMax(),v));if(n!==iScroll){iScroll=n;iDirty=true;}}
 function drawInfo(){
-  const x=ictx,d=infoCache,F=FNT,n=d.rows.length,h=104+n*52+16;
+  const x=ictx,d=infoCache,F=FNT,n=d.rows.length,vis=Math.min(n,VIS),h=HEAD+vis*ROW+16;
   x.clearRect(0,0,IW,IH);
   rr(x,0,0,IW,h,16);x.fillStyle='rgba(3,16,28,.88)';x.fill();
   rr(x,1.5,1.5,IW-3,h-3,16);x.strokeStyle='rgba(93,240,255,.65)';x.lineWidth=3;x.stroke();
   x.textBaseline='middle';x.textAlign='left';
-  x.font='600 44px '+F;x.fillStyle='#ffb347';x.fillText(d.t.length>18?d.t.slice(0,17)+'\u2026':d.t,28,46);
-  x.font='22px '+F;x.fillStyle='rgba(214,246,255,.75)';x.fillText(d.s,28,84,IW-56);
+  x.font='600 44px '+F;x.fillStyle='#ffb347';x.fillText(d.t.length>16?d.t.slice(0,15)+'\u2026':d.t,28,46);
+  x.font='22px '+F;x.fillStyle='rgba(214,246,255,.75)';x.fillText(d.s,28,84,380);
+  x.textAlign='right';x.fillText(n>VIS?`${Math.floor(iScroll)+1}\u2013${Math.min(n,Math.floor(iScroll)+VIS)} of ${n}`:`${n} words`,IW-24,84);
+  x.save();x.beginPath();x.rect(0,HEAD-4,IW,vis*ROW+4);x.clip();
   d.rows.forEach((r,i)=>{
-    const y=130+i*52,bx=352,bw=190,v=Math.max(0,Math.min(1,r.v)),c=ramp(v).map(u=>Math.round(u*255));
+    const y=HEAD+(i-iScroll)*ROW+ROW/2;if(y<HEAD-ROW||y>HEAD+vis*ROW+ROW)return;
+    const bx=352,bw=180,v=Math.max(0,Math.min(1,r.v)),c=ramp(v).map(u=>Math.round(u*255));
     x.textAlign='left';x.font='600 28px '+F;x.fillStyle='#d6f6ff';x.fillText(r.l,28,y,310);
     rr(x,bx,y-7,bw,14,7);x.fillStyle='rgba(93,240,255,.15)';x.fill();
     rr(x,bx,y-7,Math.max(10,bw*v),14,7);x.fillStyle=`rgb(${c[0]},${c[1]},${c[2]})`;x.fill();
-    x.font='20px '+F;x.textAlign='right';x.fillStyle='rgba(214,246,255,.7)';x.fillText(r.n,IW-24,y);
+    x.font='20px '+F;x.textAlign='right';x.fillStyle='rgba(214,246,255,.7)';x.fillText(r.n,IW-30,y);
   });
+  x.restore();
+  if(n>VIS){const th=vis*ROW,bh=Math.max(30,th*VIS/n),by=HEAD+(th-bh)*(iScroll/(n-VIS));
+    rr(x,IW-14,HEAD,6,th,3);x.fillStyle='rgba(93,240,255,.15)';x.fill();rr(x,IW-14,by,6,bh,3);x.fillStyle='rgba(255,179,71,.9)';x.fill();}
   x.textAlign='left';
 }
+const kOff=()=>hasCtx()?0:-76,kExt=()=>kbOpen?KH+kOff():(hasCtx()?214:140);
+function relayoutKeys(){const o=kOff();KEYS.forEach(k=>{k.y=k.y0+(k.kbk?o:0);});}
 function hud(){
+  relayoutKeys();
   hudA=sel>=0?nodes[sel].word:(Q&&Q.terms?'Query: '+Q.terms.join(' '):'Concept field');
   hudB=xrNote||(sel>=0?`${nodes[sel].adj.length} links · A adds to query · B clears`:(nodes.length?nodes.length+' concepts · pinch to select':'Load text before entering VR'));
   kDirty=true;iDirty=true;
@@ -572,19 +685,21 @@ function hud(){
 (function buildKeys(){
   KEYS.push({id:'field',x:12,y:66,w:516,h:70,act:'open'},{label:'Ask',x:538,y:66,w:84,h:70,act:'ask'},
     {label:'Clear',x:632,y:66,w:84,h:70,act:'clear'},{id:'mode',x:726,y:66,w:138,h:70,act:'mode'},{id:'place',x:874,y:66,w:138,h:70,act:'place'},
-    {id:'mic',x:844,y:8,w:92,h:44,act:'mic'},{id:'toggle',x:944,y:8,w:68,h:44,act:'toggle'});
+    {id:'mic',x:844,y:8,w:92,h:44,act:'mic'},{id:'toggle',x:944,y:8,w:68,h:44,act:'toggle'},
+    {id:'play',x:12,y:146,w:112,h:58,act:'play',tlk:true},{id:'tl',x:134,y:146,w:540,h:58,act:'tl',tlk:true},{id:'spd',x:880,y:146,w:132,h:58,act:'spd',tlk:true});
   const u=78,g=6,rows=[
     [...'1234567890'].map(c=>[c,1]).concat([['\u232b',1.6,'bs']]),
     [...'qwertyuiop'].map(c=>[c,1]),
     [...'asdfghjkl'].map(c=>[c,1]).concat([["'",1]]),
     [...'zxcvbnm'].map(c=>[c,1]).concat([['-',1],[',',1],['.',1]]),
     [['space',7.2,'sp'],['Ask',2.8,'ask']]];
-  rows.forEach((row,ri)=>{const tw=row.reduce((s,k)=>s+k[1]*u,0)+g*(row.length-1);let x=(KW-tw)/2;const y=146+ri*62;
+  rows.forEach((row,ri)=>{const tw=row.reduce((s,k)=>s+k[1]*u,0)+g*(row.length-1);let x=(KW-tw)/2;const y=222+ri*62;
     row.forEach(([l,w,a])=>{KEYS.push({label:l,x,y,w:w*u,h:56,act:a||'ch',kbk:true});x+=w*u+g;});});
+  KEYS.forEach(k=>k.y0=k.y);
 })();
 function rr(x,a,b,w,h,r){x.beginPath();if(x.roundRect)x.roundRect(a,b,w,h,r);else x.rect(a,b,w,h);}
 function drawKB(){
-  const x=kctx,ext=kbOpen?KH:140,F='"Chakra Petch",system-ui,sans-serif';
+  const x=kctx,ext=kExt(),F='"Chakra Petch",system-ui,sans-serif';
   x.clearRect(0,0,KW,KH);
   rr(x,0,0,KW,ext,16);x.fillStyle='rgba(3,16,28,.88)';x.fill();
   rr(x,1.5,1.5,KW-3,ext-3,16);x.strokeStyle='rgba(93,240,255,.65)';x.lineWidth=3;x.stroke();
@@ -596,6 +711,7 @@ function drawKB(){
   const hov=new Set(rig.map(r=>r.hk).filter(Boolean)),now=performance.now();
   for(const k of KEYS){
     if(k.kbk&&!kbOpen)continue;
+    if(k.tlk&&!hasCtx())continue;
     const on=hov.has(k),fl=pressK===k&&now-pressT<170;
     if(k.id==='field'){
       rr(x,k.x,k.y,k.w,k.h,8);x.fillStyle='rgba(0,0,0,.55)';x.fill();x.strokeStyle=on||kbOpen?'#ffb347':'rgba(93,240,255,.5)';x.lineWidth=2;x.stroke();
@@ -606,11 +722,19 @@ function drawKB(){
       if(kbOpen&&Math.floor(now/500)%2===0){const cx=k.x+16+(t?x.measureText(s).width:0)+3;x.fillStyle='#ffb347';x.fillRect(cx,k.y+16,3,k.h-32);}
       continue;
     }
+    if(k.id==='tl'){
+      const M=RV.order.length,f=M?RV.count/M:0,cy=k.y+k.h/2,tx=k.x+10,tw=k.w-20,c=ramp(.3+.6*f).map(u=>Math.round(u*255));
+      rr(x,tx,cy-6,tw,12,6);x.fillStyle='rgba(93,240,255,.18)';x.fill();
+      if(f>0){rr(x,tx,cy-6,Math.max(12,tw*f),12,6);x.fillStyle=`rgb(${c[0]},${c[1]},${c[2]})`;x.fill();}
+      x.beginPath();x.arc(tx+tw*f,cy,on?17:14,0,6.2832);x.fillStyle=on?'#ffb347':'#d6fbff';x.fill();
+      x.font='600 24px '+F;x.textAlign='left';x.fillStyle='rgba(214,246,255,.9)';x.fillText(M?`${RV.count}/${M}`:'0/0',k.x+k.w+14,cy+1);
+      continue;
+    }
     rr(x,k.x,k.y,k.w,k.h,8);
-    x.fillStyle=(fl||(k.id==='mic'&&listening))?'rgba(255,179,71,.6)':on?'rgba(93,240,255,.4)':'rgba(93,240,255,.1)';x.fill();
+    x.fillStyle=(fl||(k.id==='mic'&&listening)||(k.id==='play'&&RV.playing))?'rgba(255,179,71,.6)':on?'rgba(93,240,255,.4)':'rgba(93,240,255,.1)';x.fill();
     x.strokeStyle=on?'#5df0ff':'rgba(93,240,255,.4)';x.lineWidth=2;x.stroke();
     x.globalAlpha=((k.id==='mode'&&!sessAR)||(k.id==='mic'&&!SR))?.4:1;
-    const lab=k.id==='mic'?(listening?'Stop':'Voice'):k.id==='mode'?(sessAR?(arMode?'To VR':'To MR'):'VR only'):k.id==='place'?(arMode?'Place':'Recenter'):k.id==='toggle'?(kbOpen?'hide':'keys'):k.label;
+    const lab=k.id==='mic'?(listening?'Stop':'Voice'):k.id==='mode'?(sessAR?(arMode?'To VR':'To MR'):'VR only'):k.id==='place'?(arMode?'Place':'Recenter'):k.id==='spd'?RV.speed+'\u00d7':k.id==='play'?(RV.playing?'Pause':(RV.count>0&&RV.count<RV.order.length?'Resume':'Play')):k.id==='toggle'?(kbOpen?'hide':'keys'):k.label;
     x.font=(k.kbk?'600 30px ':'600 24px ')+F;x.fillStyle=k.act==='ask'?'#ffb347':'#d6fbff';x.textAlign='center';
     x.fillText(lab,k.x+k.w/2,k.y+k.h/2+1);x.globalAlpha=1;
   }
@@ -620,12 +744,12 @@ function drawKBIfDirty(){
   const ph=Math.floor(performance.now()/500)%2;if(kbOpen&&ph!==lastPh){lastPh=ph;kDirty=true;}
   if(pressK&&performance.now()-pressT>175){pressK=null;kDirty=true;}
   if(kDirty){drawKB();ktex.needsUpdate=true;kDirty=false;}
-  if(iDirty){iDirty=false;infoCache=infoData();ib.visible=!!infoCache;if(infoCache){drawInfo();itex.needsUpdate=true;}}
+  if(iDirty){iDirty=false;const nd=infoData();if(nd&&(!infoCache||infoCache.key!==nd.key))iScroll=0;infoCache=nd;iScroll=Math.min(iScroll,iMax());ib.visible=!!nd;if(nd){drawInfo();itex.needsUpdate=true;}}
 }
 function keyAt(px,py){
-  if(px<0||px>KW||py<0||py>(kbOpen?KH:140))return null;
-  const k=KEYS.find(k=>(!k.kbk||kbOpen)&&px>=k.x-3&&px<=k.x+k.w+3&&py>=k.y-3&&py<=k.y+k.h+3);
-  return {k:k||null};
+  if(px<0||px>KW||py<0||py>kExt())return null;
+  const k=KEYS.find(k=>(!k.kbk||kbOpen)&&(!k.tlk||hasCtx())&&px>=k.x-3&&px<=k.x+k.w+3&&py>=k.y-3&&py<=k.y+k.h+3);
+  return {k:k||null,px,py};
 }
 const rc=new THREE.Raycaster(),_o=new THREE.Vector3(),_d=new THREE.Vector3(),_q=new THREE.Quaternion();
 function panelHit(c){
@@ -645,6 +769,8 @@ function keyAct(k,r){
   else if(k.act==='ask'){if($q.value.trim()){runQuery($q.value);kbOpen=false;}}
   else if(k.act==='clear')clearAll();
   else if(k.act==='mic')voice();
+  else if(k.act==='play')tlPlay();
+  else if(k.act==='spd')tlSpeed();
   else if(k.act==='mode'){if(sessAR)switchLook(!arMode);}
   else if(k.act==='place'){if(arMode)beginPlacing();else{kInit=false;recoverField(true);}}
   kDirty=true;pressK=k;pressT=performance.now();
@@ -666,13 +792,28 @@ function placeKB(dt){
   if(!kInit){kb.position.copy(_t);ib.position.copy(_t2);}else{const a=Math.min(1,dt*8);kb.position.lerp(_t,a);ib.position.lerp(_t2,a);}
   kInit=true;kb.rotation.set(-.7,kYaw,0,'YXZ');ib.rotation.set(0,kYaw-.35,0,'YXZ');kb.updateMatrixWorld(true);ib.updateMatrixWorld(true);
 }
+function infoHit(c){
+  if(!ib.visible)return null;
+  c.getWorldPosition(_o);c.getWorldQuaternion(_q);_d.set(0,0,-1).applyQuaternion(_q);
+  rc.set(_o,_d);rc.far=1.5;
+  const h=rc.intersectObject(ib,false)[0];if(!h||!h.uv)return null;
+  return {px:h.uv.x*IW,py:(1-h.uv.y)*IH};
+}
+function tlFromPx(px){const k=KEYS.find(k=>k.id==='tl'),M=RV.order.length;if(!M)return;tlSet((px-k.x-10)/(k.w-20)*M);}
 function uiStep(){
+  ibHot=false;
   rig.forEach(r=>{
-    const hit=panelHit(r.c);r.hk=hit?hit.k:null;
+    const hit=panelHit(r.c),ih=hit?null:infoHit(r.c);r.hk=hit?hit.k:null;if(ih)ibHot=true;
     const trig=r.c.userData.isHand?r.pin:r.c.userData.tr,press=trig&&!r.tp;r.tp=trig;
-    if(press&&hit){r.uiHold=true;if(hit.k)keyAct(hit.k,r);}
+    if(press&&hit){r.uiHold=true;if(hit.k){keyAct(hit.k,r);if(hit.k.act==='tl'){r.slide=true;tlFromPx(hit.px);}}}
+    else if(press&&ih){r.uiHold=true;r.ibd={py:ih.py,off:iScroll,mv:false};}
     else if(press&&placing)confirmPlace();
-    if(!trig)r.uiHold=false;
+    if(trig&&r.slide&&hit)tlFromPx(hit.px);
+    if(trig&&r.ibd&&ih){if(Math.abs(ih.py-r.ibd.py)>14)r.ibd.mv=true;if(r.ibd.mv)setScroll(r.ibd.off+(r.ibd.py-ih.py)/ROW);} // pinch-drag scrolls
+    if(!trig){
+      if(r.ibd&&!r.ibd.mv&&infoCache&&r.ibd.py>HEAD){const it=infoCache.rows[Math.floor((r.ibd.py-HEAD)/ROW+iScroll)];if(it&&it.i>=0)select(it.i);} // quick tap selects the row
+      r.uiHold=false;r.slide=false;r.ibd=null;
+    }
   });
   const sig=rig.map(r=>KEYS.indexOf(r.hk)).join(',');if(sig!==hsig){hsig=sig;kDirty=true;}
 }
@@ -720,8 +861,8 @@ function previewAt(p,n){
   const horiz=Math.abs(n.y)>.75,up=n.y>0,drop=_o.y-p.y;
   // floor: large; tabletop: small; ceiling: medium; wall: medium. Field radius is 1 in local units, so offset by scale
   const s=arScale??(horiz?(up?(drop>1.1?.5:.22):.4):.3);
-  G.scale.setScalar(s);G.position.copy(p).addScaledVector(n,s+.03);G.quaternion.identity();
-  reticle.matrix.copy(hM);reticle.matrixWorldNeedsUpdate=true;rFoot.scale.setScalar(s);reticle.visible=true;
+  G.scale.setScalar(s);G.position.copy(p).addScaledVector(n,s*1.35+.03);G.quaternion.identity();
+  reticle.matrix.copy(hM);reticle.matrixWorldNeedsUpdate=true;rFoot.scale.setScalar(s*1.3);reticle.visible=true;
 }
 function arFrame(frame){
   if(!placing)return;
@@ -1013,9 +1154,9 @@ function sticks(dt){
     const ax=gp.axes.length>=4?[gp.axes[2],gp.axes[3]]:[gp.axes[0],gp.axes[1]];
     const dz=v=>Math.abs(v)<.15?0:v;
     if(src.handedness==='left'){
-      if(!arMode)dolly.position.addScaledVector(fwd,-dz(ax[1])*dt*1.2).addScaledVector(side,dz(ax[0])*dt*1.2);
+      if(ibHot)setScroll(iScroll+dz(ax[1])*dt*8);else if(!arMode)dolly.position.addScaledVector(fwd,-dz(ax[1])*dt*1.2).addScaledVector(side,dz(ax[0])*dt*1.2);
     }else{
-      if(!arMode){dolly.rotation.y-=dz(ax[0])*dt*1.5;dolly.position.y-=dz(ax[1])*dt*1;}
+      if(ibHot)setScroll(iScroll+dz(ax[1])*dt*8);else if(!arMode){dolly.rotation.y-=dz(ax[0])*dt*1.5;dolly.position.y-=dz(ax[1])*dt*1;}
       const a=gp.buttons[4]?.pressed,b=gp.buttons[5]?.pressed;
       if(a&&!prevBtn.a&&sel>=0){const t=($q.value+' '+nodes[sel].word).trim();$q.value=t;runQuery(t);}
       if(b&&!prevBtn.b)clearAll();
@@ -1169,7 +1310,7 @@ function lodLabels(dt){
   const cam=renderer.xr.isPresenting?renderer.xr.getCamera():camera;
   cam.getWorldPosition(_cw);_cl.copy(_cw);G.worldToLocal(_cl);
   const c=[];
-  for(const i of visible){if(forcedSet.has(i))continue;const n=nodes[i],d=Math.hypot(n.x-_cl.x,n.y-_cl.y,n.z-_cl.z),R=1.5*(.65+.7*n.nf);if(d<R)c.push([i,d,(R-d)/(R*.35)]);}
+  for(const i of visible){if(forcedSet.has(i))continue;const n=nodes[i],d=Math.hypot(n.x-_cl.x,n.y-_cl.y,n.z-_cl.z),R=1.95*(.65+.7*n.nf);if(d<R)c.push([i,d,(R-d)/(R*.35)]);}
   c.sort((a,b)=>a[1]-b[1]);c.length=Math.min(c.length,70);
   const on=new Set();
   for(const [i,d,f] of c){on.add(i);let sp=lodMap.get(i);if(!sp){sp=lodSprite(i);lodMap.set(i,sp);}
@@ -1183,7 +1324,7 @@ function unloadField(){
   nodes=[];edges=[];word2i=new Map();sel=-1;Q=null;visible=[];forcedSet=new Set();docCount=0;curCorpus=null;
   if(pts){G.remove(pts,lines,dots);pts.geometry.dispose();lines.geometry.dispose();dots.geometry.dispose();pts=lines=dots=null;}
   labelGroup.clear();labelCache.forEach(sp=>{sp.material.map.dispose();sp.material.dispose();});labelCache.clear();lodClear();
-  $q.value='';$('#file').value='';updateInfo();stat('Attach one or more text files to build the field.');
+  $q.value='';$('#file').value='';updateInfo();stat('Attach one or more text files to build the field.');tlReset();
 }
 async function clearCurrent(){
   const id=curCorpus;
@@ -1224,7 +1365,7 @@ function voice(){
 const clock=new THREE.Clock();
 renderer.setAnimationLoop((t,frame)=>{
   const dt=Math.min(clock.getDelta(),.05);U.uT.value+=dt;
-  G.updateMatrixWorld(true);lodLabels(dt);
+  G.updateMatrixWorld(true);tlStep(dt);lodLabels(dt);
   if(needCenter&&renderer.xr.isPresenting&&frame){const xc=renderer.xr.getCamera(),o=xc.getWorldPosition(new THREE.Vector3()),d=xc.getWorldDirection(new THREE.Vector3());d.y=0;if(d.lengthSq()>1e-4){d.normalize();G.scale.setScalar(centerS);const dist=arMode?.8:1.1;G.position.set(o.x+d.x*dist,o.y-.1,o.z+d.z*dist);G.quaternion.identity();needCenter=false;}}
   if(renderer.xr.isPresenting){xrWatch(dt);placeKB(dt);gestures(dt);sticks(dt);if(arMode&&frame){arPersist(frame,dt);arFrame(frame);}drawKBIfDirty();}
   else{
