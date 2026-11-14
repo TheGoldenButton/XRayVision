@@ -11,6 +11,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:'Chakra Petch',system-ui,sans-serif;overflow:hidden}
 canvas{display:block}
+[hidden]{display:none!important}
 .vig{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,8,20,.75)),repeating-linear-gradient(0deg,rgba(93,240,255,.03) 0 1px,transparent 1px 3px)}
 .panel{position:fixed;background:rgba(3,16,28,.55);border:1px solid rgba(93,240,255,.28);backdrop-filter:blur(10px);padding:12px 14px;border-radius:2px;box-shadow:0 0 24px rgba(93,240,255,.08) inset}
 #top{top:14px;left:14px;width:min(380px,calc(100vw - 28px))}
@@ -38,13 +39,14 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
   <div class="row">
     <label class="btn">Attach text files<input id="file" type="file" accept=".txt,.md,.text,.csv,.json,.html,text/*" multiple></label>
     <button id="demo">Load demo text</button>
+    <button id="ar" hidden>Enter AR</button>
   </div>
   <form id="qf" class="row"><input id="q" type="text" placeholder="Ask about your text, e.g. how does heat affect the ocean?" autocomplete="off"><button type="submit">Ask</button></form>
   <div class="row"><button id="clr">Clear query &amp; selection</button></div>
   <div id="stat">Attach one or more text files, or load the demo text, to build the field.</div>
 </div>
 <div id="info" class="panel"></div>
-<div id="hint" class="panel">Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click a concept to select. VR: pinch a concept to select, pinch empty space to drag, pinch with both hands and spread to zoom in or bring together to zoom out. Sticks fly (left move, right turn and height). A adds the selected concept to the query, B clears.</div>
+<div id="hint" class="panel">Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click a concept to select. VR: a query bar and keyboard float at the bottom of your view (point and pinch or trigger the bar to type). Pinch or trigger a concept to select, pinch empty space to drag, pinch with both hands and spread to zoom. Sticks fly (left move, right turn and height). A adds the selected concept to the query, B clears. AR (Quest 3): press Enter AR, look at a wall, table or floor, and pinch to place the field on that surface. Use Place on the panel to move it again.</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -285,7 +287,7 @@ function layout(){
 }
 
 /* ---------- three.js scene ---------- */
-const renderer=new THREE.WebGLRenderer({antialias:true});
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
 renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
 document.body.prepend(renderer.domElement);
@@ -298,31 +300,34 @@ const controls=new OrbitControls(camera,renderer.domElement);
 controls.target.copy(G.position);controls.enableDamping=true;controls.update();
 
 const grid=new THREE.GridHelper(10,40,0x0b5266,0x06222c);grid.material.transparent=true;grid.material.opacity=.5;scene.add(grid);
+const ringsG=new THREE.Group();scene.add(ringsG);
 const ringMat=new THREE.LineBasicMaterial({color:0x2bd6ff,transparent:true,opacity:.35,blending:THREE.AdditiveBlending});
-[.55,.4,.25].forEach(r=>{const pts=[];for(let i=0;i<=96;i++)pts.push(new THREE.Vector3(Math.cos(i/96*6.2832)*r,0,Math.sin(i/96*6.2832)*r));const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),ringMat);l.position.set(0,.65,-1.1);scene.add(l);});
-const U={uT:{value:0},uH:{value:900}};
-const nodeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+[.55,.4,.25].forEach(r=>{const pts=[];for(let i=0;i<=96;i++)pts.push(new THREE.Vector3(Math.cos(i/96*6.2832)*r,0,Math.sin(i/96*6.2832)*r));const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),ringMat);l.position.set(0,.65,-1.1);ringsG.add(l);});
+const U={uT:{value:0},uH:{value:900},uG:{value:1}};
+/* pure additive light: colour adds, alpha untouched, so passthrough shows through instead of dark halos */
+const ADD={blending:THREE.CustomBlending,blendEquation:THREE.AddEquation,blendSrc:THREE.OneFactor,blendDst:THREE.OneFactor,blendEquationAlpha:THREE.AddEquation,blendSrcAlpha:THREE.ZeroFactor,blendDstAlpha:THREE.OneFactor};
+const nodeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute float aSize;attribute float aI;attribute vec3 aCol;uniform float uH;uniform float uT;varying vec3 vC;varying float vI;
 void main(){vec4 mv=modelViewMatrix*vec4(position,1.);float tw=.85+.15*sin(uT*2.+position.x*40.+position.y*31.);
 gl_PointSize=max(aSize*uH*.5*projectionMatrix[1][1]/-mv.z,2.5);vC=aCol;vI=aI*tw;gl_Position=projectionMatrix*mv;}`,
-fragmentShader:`varying vec3 vC;varying float vI;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;
-float h=pow(1.-d*2.,2.);float c=smoothstep(.16,.0,d);gl_FragColor=vec4(vC*(h*.8+c*1.4)*vI,1.);}`});
-const edgeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+fragmentShader:`uniform float uG;varying vec3 vC;varying float vI;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;
+float h=pow(1.-d*2.,2.);float c=smoothstep(.16,.0,d);gl_FragColor=vec4(vC*(h*.8+c*1.4)*vI*uG,1.);}`});
+const edgeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute float aT;attribute float aI;attribute float aPh;attribute vec3 aCol;uniform float uT;varying float vA;varying vec3 vC;
 void main(){vA=aI*mix(.55,1.,aT);vC=aCol;
 gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-fragmentShader:`varying float vA;varying vec3 vC;void main(){gl_FragColor=vec4(vC*vA,1.);}`});
+fragmentShader:`uniform float uG;varying float vA;varying vec3 vC;void main(){gl_FragColor=vec4(vC*vA*uG,1.);}`});
 
 const TR=7,PN=TR*2; // comet: 7 points per particle, 2 particles per edge
-const dotMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+const dotMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute vec3 aB;attribute vec3 aCol;attribute float aPh;attribute float aI;attribute float aDir;attribute float aLag;attribute float aK;uniform float uT;uniform float uH;varying float vI;varying float vH;varying vec3 vC;
 void main(){float len=length(aB-position)+1e-4;float t=fract(uT*.09/len+aPh);float d=t*len-aLag*.014;float f=d/len;
 float on=step(0.,d)*step(.02,aI)*step(aK*.55,aI);float fc=clamp(f,0.,1.);vec3 p=mix(position,aB,aDir>.5?1.-fc:fc);vec4 mv=modelViewMatrix*vec4(p,1.);
 float tail=pow(1.-aLag/7.,1.6);float fade=smoothstep(0.,.14,f)*(1.-smoothstep(.86,1.,f));
 gl_PointSize=max(.0105*(.45+.55*tail)*uH*.5*projectionMatrix[1][1]/-mv.z,2.);vI=on*fade*tail*min(1.,aI+.35);vH=1.-aLag/7.;vC=aCol;
 gl_Position=on>0.?projectionMatrix*mv:vec4(2.,2.,2.,1.);}`,
-fragmentShader:`varying float vI;varying float vH;varying vec3 vC;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;float h=pow(1.-d*2.,2.);float c=smoothstep(.2,.0,d);
-gl_FragColor=vec4((vC*h+vec3(1.)*c*vH*vH)*vI*1.5,1.);}`});
+fragmentShader:`uniform float uG;varying float vI;varying float vH;varying vec3 vC;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;float h=pow(1.-d*2.,2.);float c=smoothstep(.2,.0,d);
+gl_FragColor=vec4((vC*h+vec3(1.)*c*vH*vH)*vI*1.5*uG,1.);}`});
 const CY=[.36,.94,1],VI=[.6,.48,1],AM=[1,.7,.28],WH=[.92,1,1],GO=[1,.84,.45];
 const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
 let pts,lines,dots,dI,dD,dC,nA,nS,nC,eI,eC,labelGroup=new THREE.Group(),fmax=1;G.add(labelGroup);
@@ -342,6 +347,8 @@ function buildVisuals(){
   if(pts){G.remove(pts,lines,dots);pts.geometry.dispose();lines.geometry.dispose();dots.geometry.dispose();}
   labelCache.forEach(s=>{s.material.map.dispose();s.material.dispose();});labelCache.clear();
   const N=nodes.length,E=edges.length;fmax=Math.max(...nodes.map(n=>n.score));
+  {const lf=nodes.map(n=>Math.log(1+n.freq)),lo=Math.min(...lf),hi=Math.max(...lf);
+   nodes.forEach((n,i)=>n.nf=hi>lo?(lf[i]-lo)/(hi-lo):.5);} // 0 = rarest drawn word, 1 = most frequent
   const pos=new Float32Array(N*3);nodes.forEach((n,i)=>pos.set([n.x,n.y,n.z],i*3));
   nA=new Float32Array(N);nS=new Float32Array(N);nC=new Float32Array(N*3);
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
@@ -368,16 +375,17 @@ function applyState(){
   const N=nodes.length,E=edges.length;if(!N)return;
   const nI=new Float32Array(N),ni=new Float32Array(N),ei=new Float32Array(E),ec=new Uint8Array(E),nc=new Uint8Array(N);
   const labs=[];
-  for(let i=0;i<N;i++){ni[i]=Math.log(1+nodes[i].score)/Math.log(1+fmax);}
+  for(let i=0;i<N;i++){ni[i]=nodes[i].nf;}
   if(Q&&Q.A){
-    for(let i=0;i<N;i++){nI[i]=Q.show[i]?.25+.75*Q.A[i]:.04;nc[i]=Q.show[i]?1:0;}
+    for(let i=0;i<N;i++){nI[i]=Q.show[i]?(.25+.75*Q.A[i])*(.8+.2*ni[i]):.04;nc[i]=Q.show[i]?1:0;}
     for(let e=0;e<E;e++){ei[e]=Q.eI[e];ec[e]=Q.eI[e]>.02?1:0;}
     Q.top.slice(0,35).forEach(i=>labs.push([i,1]));
   }else{
-    for(let i=0;i<N;i++)nI[i]=.45+.4*ni[i];
-    for(let e=0;e<E;e++)ei[e]=.05+.12*edges[e].wn;
+    for(let i=0;i<N;i++)nI[i]=.16+Math.pow(ni[i],1.2);
+    for(let e=0;e<E;e++)ei[e]=(.04+.14*edges[e].wn)*(.45+.9*(nodes[edges[e].s].nf+nodes[edges[e].t].nf)/2);
     nodes.map((n,i)=>i).sort((a,b)=>nodes[b].score-nodes[a].score).slice(0,22).forEach(i=>labs.push([i,0]));
   }
+  const pre=nI.slice();
   if(sel>=0){
     for(let i=0;i<N;i++)nI[i]*=.3;for(let e=0;e<E;e++)ei[e]*=.15;
     nI[sel]=1.3;nc[sel]=2;labs.length=0;labs.push([sel,1]);
@@ -386,9 +394,9 @@ function applyState(){
   }
   visible=[];
   for(let i=0;i<N;i++){
-    nA[i]=nI[i];nS[i]=.012+.03*ni[i]+(nc[i]===2?.03:nc[i]===1?.012*nI[i]:0);
-    const col=nc[i]===2?GO:nc[i]===1?mix(CY,AM,Math.min(1,nI[i])):nc[i]===3?WH:mix(VI,CY,ni[i]);
-    nC.set(col,i*3);if(nI[i]>.1)visible.push(i);
+    nA[i]=nI[i];nS[i]=.010+.034*ni[i]+(nc[i]===2?.03:nc[i]===1?.012*nI[i]:0);
+    const col=nc[i]===2?GO:nc[i]===1?mix(CY,AM,Math.min(1,nI[i])):nc[i]===3?WH:(ni[i]<.7?mix(VI,CY,ni[i]/.7):mix(CY,WH,(ni[i]-.7)/.3));
+    nC.set(col,i*3);if(nI[i]>.1||pre[i]>.1)visible.push(i);
   }
   const flowQ=Q&&Q.A,aT=lines.geometry.attributes.aT;
   edges.forEach((e,k)=>{
@@ -473,18 +481,182 @@ The ocean also absorbs carbon, which acidifies seawater. Ocean acidification har
 
 Wetlands and forests store carbon. Restoring forests and wetlands reduces carbon in the atmosphere while protecting coastal cities from flooding.`}]);
 
-/* ---------- VR HUD ---------- */
-const hc=document.createElement('canvas');hc.width=512;hc.height=128;
-const hs=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(hc),transparent:true,depthTest:false}));
-hs.scale.set(.5,.125,1);hs.position.set(0,-.25,-.8);hs.renderOrder=20;hs.visible=false;camera.add(hs);
+/* ---------- XR panel: status strip, query bar and keyboard, kept low in view ---------- */
+let arMode=false,placing=false,placedOnce=false,arScale=null,lastHit=false,reqAR=false,xrNote='';
+let hudA='Concept field',hudB='';
+const KW=1024,KH=456,KEYS=[];
+const kc=document.createElement('canvas');kc.width=KW;kc.height=KH;
+const kctx=kc.getContext('2d'),ktex=new THREE.CanvasTexture(kc);ktex.colorSpace=THREE.SRGBColorSpace;ktex.anisotropy=4;
+const kb=new THREE.Mesh(new THREE.PlaneGeometry(.64,.64*KH/KW),new THREE.MeshBasicMaterial({map:ktex,transparent:true,depthTest:false}));
+kb.renderOrder=30;kb.visible=false;kb.frustumCulled=false;scene.add(kb);
+let kDirty=true,kbOpen=false,pressK=null,pressT=0,lastPh=0,hsig='';
 function hud(){
-  const x=hc.getContext('2d');x.clearRect(0,0,512,128);x.fillStyle='rgba(3,16,28,.7)';x.fillRect(0,0,512,128);
-  x.strokeStyle='#5df0ff';x.strokeRect(1,1,510,126);x.font='600 28px "Chakra Petch",system-ui,sans-serif';
-  x.fillStyle=sel>=0?'#ffb347':'#5df0ff';
-  x.fillText(sel>=0?nodes[sel].word:(Q&&Q.terms?'Query: '+Q.terms.join(' '):'Concept field'),16,44);
-  x.font='20px "Chakra Petch",system-ui,sans-serif';x.fillStyle='#d6f6ff';
-  x.fillText(sel>=0?`${nodes[sel].adj.length} links · A adds to query · B clears`:(nodes.length?nodes.length+' concepts · pinch to select':'Load text before entering VR'),16,84);
-  hs.material.map.needsUpdate=true;
+  hudA=sel>=0?nodes[sel].word:(Q&&Q.terms?'Query: '+Q.terms.join(' '):'Concept field');
+  hudB=xrNote||(sel>=0?`${nodes[sel].adj.length} links · A adds to query · B clears`:(nodes.length?nodes.length+' concepts · pinch to select':'Load text before entering VR'));
+  kDirty=true;
+}
+(function buildKeys(){
+  KEYS.push({id:'field',x:12,y:66,w:648,h:70,act:'open'},{label:'Ask',x:672,y:66,w:94,h:70,act:'ask'},
+    {label:'Clear',x:776,y:66,w:94,h:70,act:'clear'},{id:'place',x:880,y:66,w:132,h:70,act:'place'},
+    {id:'toggle',x:944,y:8,w:68,h:44,act:'toggle'});
+  const u=78,g=6,rows=[
+    [...'1234567890'].map(c=>[c,1]).concat([['\u232b',1.6,'bs']]),
+    [...'qwertyuiop'].map(c=>[c,1]),
+    [...'asdfghjkl'].map(c=>[c,1]).concat([["'",1]]),
+    [...'zxcvbnm'].map(c=>[c,1]).concat([['-',1],[',',1],['.',1]]),
+    [['space',7.2,'sp'],['Ask',2.8,'ask']]];
+  rows.forEach((row,ri)=>{const tw=row.reduce((s,k)=>s+k[1]*u,0)+g*(row.length-1);let x=(KW-tw)/2;const y=146+ri*62;
+    row.forEach(([l,w,a])=>{KEYS.push({label:l,x,y,w:w*u,h:56,act:a||'ch',kbk:true});x+=w*u+g;});});
+})();
+function rr(x,a,b,w,h,r){x.beginPath();if(x.roundRect)x.roundRect(a,b,w,h,r);else x.rect(a,b,w,h);}
+function drawKB(){
+  const x=kctx,ext=kbOpen?KH:140,F='"Chakra Petch",system-ui,sans-serif';
+  x.clearRect(0,0,KW,KH);
+  rr(x,0,0,KW,ext,16);x.fillStyle='rgba(3,16,28,.88)';x.fill();
+  rr(x,1.5,1.5,KW-3,ext-3,16);x.strokeStyle='rgba(93,240,255,.65)';x.lineWidth=3;x.stroke();
+  x.textBaseline='middle';x.textAlign='left';
+  x.font='600 28px '+F;x.fillStyle=sel>=0?'#ffb347':'#5df0ff';
+  let a=hudA;if(a.length>30)a=a.slice(0,29)+'\u2026';x.fillText(a,20,32);
+  const aw=x.measureText(a).width;x.font='20px '+F;x.fillStyle='rgba(214,246,255,.85)';
+  x.fillText(hudB,36+aw,33,Math.max(60,925-aw-36));
+  const hov=new Set(rig.map(r=>r.hk).filter(Boolean)),now=performance.now();
+  for(const k of KEYS){
+    if(k.kbk&&!kbOpen)continue;
+    const on=hov.has(k),fl=pressK===k&&now-pressT<170;
+    if(k.id==='field'){
+      rr(x,k.x,k.y,k.w,k.h,8);x.fillStyle='rgba(0,0,0,.55)';x.fill();x.strokeStyle=on||kbOpen?'#ffb347':'rgba(93,240,255,.5)';x.lineWidth=2;x.stroke();
+      x.font='600 30px '+F;x.textAlign='left';const t=$q.value,mw=k.w-40;let s=t;
+      while(s.length&&x.measureText(s).width>mw)s=s.slice(1);
+      if(!t){x.fillStyle='rgba(214,246,255,.4)';x.fillText('Ask about your text\u2026',k.x+16,k.y+k.h/2+1);}
+      else{x.fillStyle='#d6f6ff';x.fillText(s,k.x+16,k.y+k.h/2+1);}
+      if(kbOpen&&Math.floor(now/500)%2===0){const cx=k.x+16+(t?x.measureText(s).width:0)+3;x.fillStyle='#ffb347';x.fillRect(cx,k.y+16,3,k.h-32);}
+      continue;
+    }
+    rr(x,k.x,k.y,k.w,k.h,8);
+    x.fillStyle=fl?'rgba(255,179,71,.6)':on?'rgba(93,240,255,.4)':'rgba(93,240,255,.1)';x.fill();
+    x.strokeStyle=on?'#5df0ff':'rgba(93,240,255,.4)';x.lineWidth=2;x.stroke();
+    const lab=k.id==='place'?(arMode?'Place':'Recenter'):k.id==='toggle'?(kbOpen?'hide':'keys'):k.label;
+    x.font=(k.kbk?'600 30px ':'600 24px ')+F;x.fillStyle=k.act==='ask'?'#ffb347':'#d6fbff';x.textAlign='center';
+    x.fillText(lab,k.x+k.w/2,k.y+k.h/2+1);
+  }
+}
+function drawKBIfDirty(){
+  if(!kb.visible)return;
+  const ph=Math.floor(performance.now()/500)%2;if(kbOpen&&ph!==lastPh){lastPh=ph;kDirty=true;}
+  if(pressK&&performance.now()-pressT>175){pressK=null;kDirty=true;}
+  if(kDirty){drawKB();ktex.needsUpdate=true;kDirty=false;}
+}
+function keyAt(px,py){
+  if(px<0||px>KW||py<0||py>(kbOpen?KH:140))return null;
+  const k=KEYS.find(k=>(!k.kbk||kbOpen)&&px>=k.x-3&&px<=k.x+k.w+3&&py>=k.y-3&&py<=k.y+k.h+3);
+  return {k:k||null};
+}
+const rc=new THREE.Raycaster(),_o=new THREE.Vector3(),_d=new THREE.Vector3(),_q=new THREE.Quaternion();
+function panelHit(c){
+  if(!kb.visible)return null;
+  c.getWorldPosition(_o);c.getWorldQuaternion(_q);_d.set(0,0,-1).applyQuaternion(_q);
+  rc.set(_o,_d);rc.far=1.5;
+  const h=rc.intersectObject(kb,false)[0];if(!h||!h.uv)return null;
+  return keyAt(h.uv.x*KW,(1-h.uv.y)*KH);
+}
+function keyAct(k,r){
+  const t=$q.value;
+  if(k.act==='ch'){if(t.length<120)$q.value=t+k.label;}
+  else if(k.act==='sp'){if(t.length<120)$q.value=t+' ';}
+  else if(k.act==='bs')$q.value=t.slice(0,-1);
+  else if(k.act==='open')kbOpen=true;
+  else if(k.act==='toggle')kbOpen=!kbOpen;
+  else if(k.act==='ask'){if($q.value.trim()){runQuery($q.value);kbOpen=false;}}
+  else if(k.act==='clear')clearAll();
+  else if(k.act==='place'){if(arMode)beginPlacing();else kInit=false;}
+  kDirty=true;pressK=k;pressT=performance.now();
+  try{r.c.userData.src?.gamepad?.hapticActuators?.[0]?.pulse(.35,30);}catch(e){}
+}
+/* lazy-follow: panel stays at a fixed spot below the eyes, turning only when you turn well away from it */
+const _h=new THREE.Vector3(),_f=new THREE.Vector3(),_t=new THREE.Vector3();let kYaw=0,kInit=false,kMove=false;
+function placeKB(dt){
+  const xc=renderer.xr.getCamera();xc.getWorldPosition(_h);xc.getWorldDirection(_f);_f.y=0;
+  if(_f.lengthSq()>1e-4){
+    _f.normalize();const yaw=Math.atan2(-_f.x,-_f.z);if(!kInit)kYaw=yaw;
+    const df=Math.atan2(Math.sin(yaw-kYaw),Math.cos(yaw-kYaw));
+    if(Math.abs(df)>.75)kMove=true;if(Math.abs(df)<.05)kMove=false;
+    if(kMove)kYaw+=df*Math.min(1,dt*3);
+  }
+  _t.set(_h.x-Math.sin(kYaw)*.5,_h.y-.42,_h.z-Math.cos(kYaw)*.5);
+  if(!kInit)kb.position.copy(_t);else kb.position.lerp(_t,Math.min(1,dt*8));
+  kInit=true;kb.rotation.set(-.7,kYaw,0,'YXZ');kb.updateMatrixWorld(true);
+}
+function uiStep(){
+  rig.forEach(r=>{
+    const hit=panelHit(r.c);r.hk=hit?hit.k:null;
+    const trig=r.c.userData.isHand?r.pin:r.c.userData.tr,press=trig&&!r.tp;r.tp=trig;
+    if(press&&hit){r.uiHold=true;if(hit.k)keyAct(hit.k,r);}
+    else if(press&&placing)confirmPlace();
+    if(!trig)r.uiHold=false;
+  });
+  const sig=rig.map(r=>KEYS.indexOf(r.hk)).join(',');if(sig!==hsig){hsig=sig;kDirty=true;}
+}
+
+/* ---------- AR: place the field on a real surface ---------- */
+const planeG=new THREE.Group(),planeMap=new Map();dolly.add(planeG);planeG.visible=false;
+const planeMat=new THREE.LineBasicMaterial({color:0x2bd6ff,transparent:true,opacity:.4,depthTest:false});
+const reticle=new THREE.Group();reticle.matrixAutoUpdate=false;reticle.visible=false;dolly.add(reticle);
+const rIn=new THREE.Mesh(new THREE.RingGeometry(.07,.085,40).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x5df0ff,transparent:true,opacity:.9,side:THREE.DoubleSide,depthTest:false}));
+const rFoot=new THREE.Mesh(new THREE.RingGeometry(.985,1,96).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x5df0ff,transparent:true,opacity:.4,side:THREE.DoubleSide,depthTest:false}));
+reticle.add(rIn,rFoot);
+const hP=new THREE.Vector3(),hN=new THREE.Vector3(),hM=new THREE.Matrix4();
+let viewerHit=null;
+async function setupHit(s){
+  try{const vs=await s.requestReferenceSpace('viewer');viewerHit=await s.requestHitTestSource({space:vs});}
+  catch(e){viewerHit=null;}
+}
+function teardownHit(){try{viewerHit&&viewerHit.cancel();}catch(e){}viewerHit=null;}
+function clearPlanes(){planeMap.forEach(l=>{planeG.remove(l);l.geometry.dispose();});planeMap.clear();}
+function syncPlanes(frame,ref){
+  const set=frame.detectedPlanes;if(!set)return;
+  for(const [p,l] of planeMap)if(!set.has(p)){planeG.remove(l);l.geometry.dispose();planeMap.delete(p);}
+  set.forEach(p=>{
+    const pose=frame.getPose(p.planeSpace,ref);if(!pose)return;
+    let l=planeMap.get(p);
+    if(!l||l.userData.t!==p.lastChangedTime){
+      const g=new THREE.BufferGeometry().setFromPoints(p.polygon.map(q=>new THREE.Vector3(q.x,q.y,q.z)));
+      if(l){l.geometry.dispose();l.geometry=g;}
+      else{l=new THREE.LineLoop(g,planeMat);l.matrixAutoUpdate=false;l.frustumCulled=false;planeG.add(l);planeMap.set(p,l);}
+      l.userData.t=p.lastChangedTime;
+    }
+    l.matrix.fromArray(pose.transform.matrix);l.matrixWorldNeedsUpdate=true;
+  });
+}
+function beginPlacing(){
+  if(!arMode||!nodes.length)return;
+  placing=true;lastHit=false;arScale=placedOnce?G.scale.x:null;planeG.visible=true;
+  xrNote='Look at a surface and pinch (or trigger) to place the field';hud();
+}
+function confirmPlace(){
+  placing=false;placedOnce=true;reticle.visible=false;planeG.visible=false;xrNote='';hud();
+}
+function previewAt(p,n){
+  const xc=renderer.xr.getCamera();xc.getWorldPosition(_o);
+  const horiz=Math.abs(n.y)>.75,up=n.y>0,drop=_o.y-p.y;
+  // floor: large; tabletop: small; ceiling: medium; wall: medium. Field radius is 1 in local units, so offset by scale
+  const s=arScale??(horiz?(up?(drop>1.1?.5:.22):.4):.3);
+  G.scale.setScalar(s);G.position.copy(p).addScaledVector(n,s+.03);G.quaternion.identity();
+  reticle.matrix.copy(hM);reticle.matrixWorldNeedsUpdate=true;rFoot.scale.setScalar(s);reticle.visible=true;
+}
+function arFrame(frame){
+  if(!placing)return;
+  const ref=renderer.xr.getReferenceSpace();
+  try{syncPlanes(frame,ref);}catch(e){}
+  let hit=null;
+  if(viewerHit){const rs=frame.getHitTestResults(viewerHit);if(rs.length)hit=rs[0];}
+  const pose=hit&&hit.getPose(ref);
+  if(pose){
+    hM.fromArray(pose.transform.matrix);hP.setFromMatrixPosition(hM);hN.set(0,1,0).transformDirection(hM);
+    lastHit=true;previewAt(hP,hN);
+  }else if(!lastHit){ // no surface found yet: float the field ahead so it can still be placed
+    const xc=renderer.xr.getCamera();xc.getWorldPosition(_o);xc.getWorldDirection(_d);_d.y=0;_d.normalize();
+    G.scale.setScalar(arScale??.3);G.position.set(_o.x+_d.x,_o.y-.1,_o.z+_d.z);reticle.visible=false;
+  }
 }
 hud();
 
@@ -514,23 +686,57 @@ addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updat
 
 /* ---------- VR: hands, controllers, sticks ---------- */
 document.body.appendChild(VRButton.createButton(renderer));
+const arBtn=document.querySelector('#ar');
+if(navigator.xr&&navigator.xr.isSessionSupported)navigator.xr.isSessionSupported('immersive-ar').then(ok=>{arBtn.hidden=!ok;}).catch(()=>{});
+arBtn.onclick=async()=>{
+  const cur=renderer.xr.getSession();if(cur){cur.end();return;}
+  if(!nodes.length){stat('Load text before entering AR.');return;}
+  const feats=['hit-test','plane-detection','hand-tracking'];
+  try{
+    let sess;
+    try{renderer.xr.setReferenceSpaceType('local-floor');sess=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['local-floor'],optionalFeatures:feats});}
+    catch(e){renderer.xr.setReferenceSpaceType('local');sess=await navigator.xr.requestSession('immersive-ar',{optionalFeatures:feats});}
+    reqAR=true;await renderer.xr.setSession(sess);
+  }catch(e){reqAR=false;stat('AR could not start: '+(e&&e.message||e));}
+};
 const hf=new XRHandModelFactory(),cf=new XRControllerModelFactory(),rig=[];
 for(let i=0;i<2;i++){
   const c=renderer.xr.getController(i),gr=renderer.xr.getControllerGrip(i),h=renderer.xr.getHand(i);
   const rl=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-.8)]),new THREE.LineBasicMaterial({color:0x5df0ff,transparent:true,opacity:.5,blending:THREE.AdditiveBlending}));
-  c.add(rl);c.userData={on:false,sq:false,isHand:false};
-  c.addEventListener('connected',e=>{c.userData.on=true;c.userData.isHand=!!e.data.hand;});
+  c.add(rl);c.userData={on:false,sq:false,isHand:false,tr:false,src:null};
+  c.addEventListener('connected',e=>{c.userData.on=true;c.userData.isHand=!!e.data.hand;c.userData.src=e.data;});
   c.addEventListener('disconnected',()=>c.userData.on=false);
   c.addEventListener('squeezestart',()=>c.userData.sq=true);c.addEventListener('squeezeend',()=>c.userData.sq=false);
-  c.addEventListener('selectstart',e=>{if(e.data.hand||!nodes.length)return;
+  c.addEventListener('selectend',()=>{c.userData.tr=false;});
+  c.addEventListener('selectstart',e=>{if(e.data.hand)return;c.userData.tr=true;if(!nodes.length||placing||panelHit(c))return;
     const o=c.getWorldPosition(new THREE.Vector3()),d=new THREE.Vector3(0,0,-1).applyQuaternion(c.getWorldQuaternion(new THREE.Quaternion()));
     const k=pick(o,d,.06);if(k>=0)select(k);else if(sel>=0){sel=-1;applyState();}});
   h.userData={on:false};h.addEventListener('connected',()=>h.userData.on=true);h.addEventListener('disconnected',()=>h.userData.on=false);
-  gr.add(cf.createControllerModel(gr));h.add(hf.createHandModel(h,'spheres'));
-  dolly.add(c,gr,h);rig.push({c,h,pin:false,prev:false});
+  const cm=cf.createControllerModel(gr),hm=hf.createHandModel(h,'spheres');gr.add(cm);h.add(hm);
+  dolly.add(c,gr,h);rig.push({c,h,cm,hm,pin:false,prev:false,hk:null,tp:false,uiHold:false});
 }
-renderer.xr.addEventListener('sessionstart',()=>{controls.enabled=false;hs.visible=true;U.uH.value=1600;hud();});
-renderer.xr.addEventListener('sessionend',()=>{controls.enabled=true;hs.visible=false;dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);camera.position.set(0,1.6,.9);controls.target.copy(G.position);controls.update();});
+renderer.xr.addEventListener('sessionstart',()=>{
+  const s=renderer.xr.getSession();
+  arMode=reqAR||(!!s.environmentBlendMode&&s.environmentBlendMode!=='opaque');reqAR=false;
+  controls.enabled=false;kb.visible=true;kInit=false;kbOpen=false;U.uH.value=1600;
+  dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);
+  rig.forEach(r=>{r.hm.visible=!arMode;r.cm.visible=!arMode;});
+  if(arMode){
+    scene.background=null;renderer.setClearAlpha(0);grid.visible=false;ringsG.visible=false;U.uG.value=1.6;
+    arBtn.textContent='Exit AR';
+    if(nodes.length){setupHit(s);beginPlacing();}else{xrNote='Load text before entering AR';}
+  }
+  hud();
+});
+renderer.xr.addEventListener('sessionend',()=>{
+  controls.enabled=true;kb.visible=false;
+  if(arMode){scene.background=new THREE.Color(0x01040a);grid.visible=true;ringsG.visible=true;G.position.set(0,1.4,-1.1);G.scale.setScalar(.6);G.quaternion.identity();}
+  U.uG.value=1;arMode=false;placing=false;placedOnce=false;xrNote='';reticle.visible=false;planeG.visible=false;
+  clearPlanes();teardownHit();arBtn.textContent='Enter AR';
+  renderer.xr.setReferenceSpaceType('local-floor');
+  rig.forEach(r=>{r.hm.visible=true;r.cm.visible=true;r.uiHold=false;});
+  dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);camera.position.set(0,1.6,.9);controls.target.copy(G.position);controls.update();hud();
+});
 
 const Y=new THREE.Vector3(0,1,0);let mode='none',gi=-1,g0={},g1={},grabbing=false,prevBtn={};
 function handPoint(r){
@@ -548,7 +754,7 @@ function nearestWorld(p,rad){
   return best;
 }
 function gestures(dt){
-  const P=rig.map(handPoint),act=[0,1].filter(i=>P[i]&&rig[i].pin);
+  const P=rig.map(handPoint);uiStep();const act=[0,1].filter(i=>P[i]&&rig[i].pin&&!rig[i].uiHold&&!placing);
   if(act.length===2){
     const a=P[0],b=P[1],d=a.distanceTo(b),M=a.clone().add(b).multiplyScalar(.5),ang=Math.atan2(b.x-a.x,b.z-a.z);
     if(mode!=='two'){g0={d,ang,M,P:G.position.clone(),s:G.scale.x,q:G.quaternion.clone()};mode='two';}
@@ -581,9 +787,9 @@ function sticks(dt){
     const ax=gp.axes.length>=4?[gp.axes[2],gp.axes[3]]:[gp.axes[0],gp.axes[1]];
     const dz=v=>Math.abs(v)<.15?0:v;
     if(src.handedness==='left'){
-      dolly.position.addScaledVector(fwd,-dz(ax[1])*dt*1.2).addScaledVector(side,dz(ax[0])*dt*1.2);
+      if(!arMode)dolly.position.addScaledVector(fwd,-dz(ax[1])*dt*1.2).addScaledVector(side,dz(ax[0])*dt*1.2);
     }else{
-      dolly.rotation.y-=dz(ax[0])*dt*1.5;dolly.position.y-=dz(ax[1])*dt*1;
+      if(!arMode){dolly.rotation.y-=dz(ax[0])*dt*1.5;dolly.position.y-=dz(ax[1])*dt*1;}
       const a=gp.buttons[4]?.pressed,b=gp.buttons[5]?.pressed;
       if(a&&!prevBtn.a&&sel>=0){const t=($q.value+' '+nodes[sel].word).trim();$q.value=t;runQuery(t);}
       if(b&&!prevBtn.b)clearAll();
@@ -593,10 +799,10 @@ function sticks(dt){
 }
 /* ---------- loop ---------- */
 const clock=new THREE.Clock();
-renderer.setAnimationLoop(()=>{
+renderer.setAnimationLoop((t,frame)=>{
   const dt=Math.min(clock.getDelta(),.05);U.uT.value+=dt;
   G.updateMatrixWorld(true);
-  if(renderer.xr.isPresenting){gestures(dt);sticks(dt);}
+  if(renderer.xr.isPresenting){placeKB(dt);gestures(dt);sticks(dt);if(arMode&&frame)arFrame(frame);drawKBIfDirty();}
   else{
     U.uH.value=renderer.domElement.height;
     const v=new THREE.Vector3(),sp=dt*1.2;
