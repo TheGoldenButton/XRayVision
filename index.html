@@ -39,14 +39,14 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
   <div class="row">
     <label class="btn">Attach text files<input id="file" type="file" accept=".txt,.md,.text,.csv,.json,.html,text/*" multiple></label>
     <button id="demo">Load demo text</button>
-    <button id="ar" hidden>Enter AR</button>
+    <button id="ar" hidden style="color:var(--am);border-color:var(--am)">Enter mixed reality</button>
   </div>
   <form id="qf" class="row"><input id="q" type="text" placeholder="Ask about your text, e.g. how does heat affect the ocean?" autocomplete="off"><button type="submit">Ask</button></form>
   <div class="row"><button id="clr">Clear query &amp; selection</button></div>
   <div id="stat">Attach one or more text files, or load the demo text, to build the field.</div>
 </div>
 <div id="info" class="panel"></div>
-<div id="hint" class="panel">Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click a concept to select. VR: a query bar and keyboard float at the bottom of your view (point and pinch or trigger the bar to type). Pinch or trigger a concept to select, pinch empty space to drag, pinch with both hands and spread to zoom. Sticks fly (left move, right turn and height). A adds the selected concept to the query, B clears. AR (Quest 3): press Enter AR, look at a wall, table or floor, and pinch to place the field on that surface. Use Place on the panel to move it again.</div>
+<div id="hint" class="panel">Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click a concept to select. VR: a query bar and keyboard float at the bottom of your view (point and pinch or trigger the bar to type). Mixed reality (Quest 3): press Enter mixed reality to see your room through the passthrough cameras. Pinch and drag anywhere to move the data sphere, pinch with both hands and spread to resize, quick pinch on a concept to select it. Sticks fly in VR. A adds the selected concept to the query, B clears. Press Place on the panel to snap the field onto a wall, table or floor.</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -289,7 +289,7 @@ function layout(){
 /* ---------- three.js scene ---------- */
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
-renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');
+renderer.xr.enabled=true;renderer.xr.setFramebufferScaleFactor(1.4);renderer.xr.setReferenceSpaceType('local-floor');
 document.body.prepend(renderer.domElement);
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x01040a);
 const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.01,200);
@@ -303,15 +303,16 @@ const grid=new THREE.GridHelper(10,40,0x0b5266,0x06222c);grid.material.transpare
 const ringsG=new THREE.Group();scene.add(ringsG);
 const ringMat=new THREE.LineBasicMaterial({color:0x2bd6ff,transparent:true,opacity:.35,blending:THREE.AdditiveBlending});
 [.55,.4,.25].forEach(r=>{const pts=[];for(let i=0;i<=96;i++)pts.push(new THREE.Vector3(Math.cos(i/96*6.2832)*r,0,Math.sin(i/96*6.2832)*r));const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),ringMat);l.position.set(0,.65,-1.1);ringsG.add(l);});
-const U={uT:{value:0},uH:{value:900},uG:{value:1}};
+const U={uT:{value:0},uH:{value:900},uG:{value:1},uX:{value:0}};
 /* pure additive light: colour adds, alpha untouched, so passthrough shows through instead of dark halos */
 const ADD={blending:THREE.CustomBlending,blendEquation:THREE.AddEquation,blendSrc:THREE.OneFactor,blendDst:THREE.OneFactor,blendEquationAlpha:THREE.AddEquation,blendSrcAlpha:THREE.ZeroFactor,blendDstAlpha:THREE.OneFactor};
 const nodeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute float aSize;attribute float aI;attribute vec3 aCol;uniform float uH;uniform float uT;varying vec3 vC;varying float vI;
 void main(){vec4 mv=modelViewMatrix*vec4(position,1.);float tw=.85+.15*sin(uT*2.+position.x*40.+position.y*31.);
-gl_PointSize=max(aSize*uH*.5*projectionMatrix[1][1]/-mv.z,2.5);vC=aCol;vI=aI*tw;gl_Position=projectionMatrix*mv;}`,
-fragmentShader:`uniform float uG;varying vec3 vC;varying float vI;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;
-float h=pow(1.-d*2.,2.);float c=smoothstep(.16,.0,d);gl_FragColor=vec4(vC*(h*.8+c*1.4)*vI*uG,1.);}`});
+gl_PointSize=max(aSize*uH*.5*projectionMatrix[1][1]/-mv.z,2.5+2.*uX);vC=aCol;vI=aI*tw;gl_Position=projectionMatrix*mv;}`,
+fragmentShader:`uniform float uG;uniform float uX;varying vec3 vC;varying float vI;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;
+float h=pow(1.-d*2.,2.);float c=smoothstep(.16,.0,d);float k=smoothstep(.3,.26,d);float rim=smoothstep(.4,.36,d)*smoothstep(.28,.33,d);
+gl_FragColor=vec4(vC*(h*(.8-.5*uX)+c*1.4+uX*(k*.8+rim*.7))*vI*uG,1.);}`});
 const edgeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute float aT;attribute float aI;attribute float aPh;attribute vec3 aCol;uniform float uT;varying float vA;varying vec3 vC;
 void main(){vA=aI*mix(.55,1.,aT);vC=aCol;
@@ -320,13 +321,13 @@ fragmentShader:`uniform float uG;varying float vA;varying vec3 vC;void main(){gl
 
 const TR=7,PN=TR*2; // comet: 7 points per particle, 2 particles per edge
 const dotMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
-vertexShader:`attribute vec3 aB;attribute vec3 aCol;attribute float aPh;attribute float aI;attribute float aDir;attribute float aLag;attribute float aK;uniform float uT;uniform float uH;varying float vI;varying float vH;varying vec3 vC;
+vertexShader:`attribute vec3 aB;attribute vec3 aCol;attribute float aPh;attribute float aI;attribute float aDir;attribute float aLag;attribute float aK;uniform float uT;uniform float uH;uniform float uX;varying float vI;varying float vH;varying vec3 vC;
 void main(){float len=length(aB-position)+1e-4;float t=fract(uT*.09/len+aPh);float d=t*len-aLag*.014;float f=d/len;
 float on=step(0.,d)*step(.02,aI)*step(aK*.55,aI);float fc=clamp(f,0.,1.);vec3 p=mix(position,aB,aDir>.5?1.-fc:fc);vec4 mv=modelViewMatrix*vec4(p,1.);
 float tail=pow(1.-aLag/7.,1.6);float fade=smoothstep(0.,.14,f)*(1.-smoothstep(.86,1.,f));
-gl_PointSize=max(.0105*(.45+.55*tail)*uH*.5*projectionMatrix[1][1]/-mv.z,2.);vI=on*fade*tail*min(1.,aI+.35);vH=1.-aLag/7.;vC=aCol;
+gl_PointSize=max(.0105*(.45+.55*tail)*uH*.5*projectionMatrix[1][1]/-mv.z,2.+1.5*uX);vI=on*fade*tail*min(1.,aI+.35);vH=1.-aLag/7.;vC=aCol;
 gl_Position=on>0.?projectionMatrix*mv:vec4(2.,2.,2.,1.);}`,
-fragmentShader:`uniform float uG;varying float vI;varying float vH;varying vec3 vC;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;float h=pow(1.-d*2.,2.);float c=smoothstep(.2,.0,d);
+fragmentShader:`uniform float uG;uniform float uX;varying float vI;varying float vH;varying vec3 vC;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;float h=pow(1.-d*2.,2.)*(1.-.4*uX);float c=smoothstep(.2+.12*uX,.0,d);
 gl_FragColor=vec4((vC*h+vec3(1.)*c*vH*vH)*vI*1.5*uG,1.);}`});
 const CY=[.36,.94,1],VI=[.6,.48,1],AM=[1,.7,.28],WH=[.92,1,1],GO=[1,.84,.45];
 const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
@@ -335,10 +336,11 @@ const labelCache=new Map();
 function label(i,kind){
   const key=nodes[i].word+kind;let s=labelCache.get(key);
   if(!s){
-    const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');
-    x.font='600 34px "Chakra Petch",system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';
-    x.shadowColor=kind?'#ffb347':'#5df0ff';x.shadowBlur=12;x.fillStyle=kind?'#ffe2a8':'#d6fbff';x.fillText(nodes[i].word,128,32);
-    const m=new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false,blending:THREE.AdditiveBlending});
+    const c=document.createElement('canvas');c.width=768;c.height=192;const x=c.getContext('2d');
+    x.font='600 100px "Chakra Petch",system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';
+    x.shadowColor=kind?'#ffb347':'#5df0ff';x.shadowBlur=24;x.fillStyle=kind?'#ffe2a8':'#d6fbff';x.fillText(nodes[i].word,384,96);
+    const tx=new THREE.CanvasTexture(c);tx.anisotropy=8;tx.minFilter=THREE.LinearMipmapLinearFilter;tx.colorSpace=THREE.SRGBColorSpace;
+    const m=new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false,blending:THREE.AdditiveBlending});
     s=new THREE.Sprite(m);s.scale.set(.16,.04,1);s.renderOrder=10;labelCache.set(key,s);
   }
   s.position.set(nodes[i].x,nodes[i].y+.035,nodes[i].z);return s;
@@ -482,7 +484,7 @@ The ocean also absorbs carbon, which acidifies seawater. Ocean acidification har
 Wetlands and forests store carbon. Restoring forests and wetlands reduces carbon in the atmosphere while protecting coastal cities from flooding.`}]);
 
 /* ---------- XR panel: status strip, query bar and keyboard, kept low in view ---------- */
-let arMode=false,placing=false,placedOnce=false,arScale=null,lastHit=false,reqAR=false,xrNote='';
+let needCenter=false,arMode=false,placing=false,placedOnce=false,arScale=null,lastHit=false,reqAR=false,xrNote='';
 let hudA='Concept field',hudB='';
 const KW=1024,KH=456,KEYS=[];
 const kc=document.createElement('canvas');kc.width=KW;kc.height=KH;
@@ -690,7 +692,7 @@ const arBtn=document.querySelector('#ar');
 if(navigator.xr&&navigator.xr.isSessionSupported)navigator.xr.isSessionSupported('immersive-ar').then(ok=>{arBtn.hidden=!ok;}).catch(()=>{});
 arBtn.onclick=async()=>{
   const cur=renderer.xr.getSession();if(cur){cur.end();return;}
-  if(!nodes.length){stat('Load text before entering AR.');return;}
+  if(!nodes.length){stat('Load text before entering mixed reality.');return;}
   const feats=['hit-test','plane-detection','hand-tracking'];
   try{
     let sess;
@@ -718,21 +720,23 @@ for(let i=0;i<2;i++){
 renderer.xr.addEventListener('sessionstart',()=>{
   const s=renderer.xr.getSession();
   arMode=reqAR||(!!s.environmentBlendMode&&s.environmentBlendMode!=='opaque');reqAR=false;
-  controls.enabled=false;kb.visible=true;kInit=false;kbOpen=false;U.uH.value=1600;
+  controls.enabled=false;kb.visible=true;kInit=false;kbOpen=false;U.uX.value=1;
+  try{renderer.xr.setFoveation(0);}catch(e){}
+  {const bl=s.renderState&&s.renderState.baseLayer;U.uH.value=bl&&bl.framebufferHeight?bl.framebufferHeight:2000;}
   dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);
   rig.forEach(r=>{r.hm.visible=!arMode;r.cm.visible=!arMode;});
   if(arMode){
     scene.background=null;renderer.setClearAlpha(0);grid.visible=false;ringsG.visible=false;U.uG.value=1.6;
-    arBtn.textContent='Exit AR';
-    if(nodes.length){setupHit(s);beginPlacing();}else{xrNote='Load text before entering AR';}
+    arBtn.textContent='Exit mixed reality';
+    if(nodes.length){setupHit(s);needCenter=true;xrNote='Pinch and drag to move the field. Press Place to snap it to a surface';}else{xrNote='Load text before entering mixed reality';}
   }
   hud();
 });
 renderer.xr.addEventListener('sessionend',()=>{
   controls.enabled=true;kb.visible=false;
   if(arMode){scene.background=new THREE.Color(0x01040a);grid.visible=true;ringsG.visible=true;G.position.set(0,1.4,-1.1);G.scale.setScalar(.6);G.quaternion.identity();}
-  U.uG.value=1;arMode=false;placing=false;placedOnce=false;xrNote='';reticle.visible=false;planeG.visible=false;
-  clearPlanes();teardownHit();arBtn.textContent='Enter AR';
+  U.uG.value=1;U.uX.value=0;arMode=false;placing=false;placedOnce=false;xrNote='';reticle.visible=false;planeG.visible=false;
+  clearPlanes();teardownHit();arBtn.textContent='Enter mixed reality';
   renderer.xr.setReferenceSpaceType('local-floor');
   rig.forEach(r=>{r.hm.visible=true;r.cm.visible=true;r.uiHold=false;});
   dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);camera.position.set(0,1.6,.9);controls.target.copy(G.position);controls.update();hud();
@@ -757,7 +761,7 @@ function gestures(dt){
   const P=rig.map(handPoint);uiStep();const act=[0,1].filter(i=>P[i]&&rig[i].pin&&!rig[i].uiHold&&!placing);
   if(act.length===2){
     const a=P[0],b=P[1],d=a.distanceTo(b),M=a.clone().add(b).multiplyScalar(.5),ang=Math.atan2(b.x-a.x,b.z-a.z);
-    if(mode!=='two'){g0={d,ang,M,P:G.position.clone(),s:G.scale.x,q:G.quaternion.clone()};mode='two';}
+    if(mode!=='two'){if(g1)g1.moved=true;g0={d,ang,M,P:G.position.clone(),s:G.scale.x,q:G.quaternion.clone()};mode='two';}
     else{
       const s=THREE.MathUtils.clamp(g0.s*d/g0.d,.03,15),R=new THREE.Quaternion().setFromAxisAngle(Y,ang-g0.ang);
       G.scale.setScalar(s);G.quaternion.copy(R).multiply(g0.q);
@@ -766,17 +770,27 @@ function gestures(dt){
   }else if(act.length===1){
     const i=act[0],p=P[i];
     if(mode!=='one'||gi!==i){
-      const wasTwo=mode==='two';mode='one';gi=i;grabbing=true;
+      const wasTwo=mode==='two';
+      if(mode==='one')endTap();
+      mode='one';gi=i;grabbing=!wasTwo;
+      let k=-1;
       if(!wasTwo&&nodes.length){
         G.updateMatrixWorld(true);
-        let k=nearestWorld(p,.06);
-        if(k<0){const o=rig[i].c.getWorldPosition(new THREE.Vector3()),d=new THREE.Vector3(0,0,-1).applyQuaternion(rig[i].c.getWorldQuaternion(new THREE.Quaternion()));k=pick(o,d,.05);}
-        if(k>=0){select(k);grabbing=false;}
-        else if(sel>=0&&rig[i].c.userData.isHand===false){}
+        k=nearestWorld(p,.05);
+        if(k<0){const o=rig[i].c.getWorldPosition(new THREE.Vector3()),d=new THREE.Vector3(0,0,-1).applyQuaternion(rig[i].c.getWorldQuaternion(new THREE.Quaternion()));k=pick(o,d,.04);}
       }
-      g1={p:p.clone(),P:G.position.clone()};
-    }else if(grabbing)G.position.copy(g1.P).add(p.clone().sub(g1.p));
-  }else mode='none';
+      g1={p:p.clone(),P:G.position.clone(),k,moved:false};
+    }else if(grabbing){
+      const dl=p.clone().sub(g1.p);
+      if(!g1.moved&&dl.length()>.015)g1.moved=true;
+      if(g1.moved)G.position.copy(g1.P).add(dl);
+    }
+  }else{endTap();mode='none';}
+}
+function endTap(){
+  if(mode==='one'&&g1&&!g1.moved&&grabbing&&nodes.length){
+    if(g1.k>=0)select(g1.k);else if(sel>=0){sel=-1;applyState();}
+  }
 }
 function sticks(dt){
   const s=renderer.xr.getSession();if(!s)return;
@@ -802,6 +816,7 @@ const clock=new THREE.Clock();
 renderer.setAnimationLoop((t,frame)=>{
   const dt=Math.min(clock.getDelta(),.05);U.uT.value+=dt;
   G.updateMatrixWorld(true);
+  if(needCenter&&renderer.xr.isPresenting&&frame){const xc=renderer.xr.getCamera(),o=xc.getWorldPosition(new THREE.Vector3()),d=xc.getWorldDirection(new THREE.Vector3());d.y=0;if(d.lengthSq()>1e-4){d.normalize();G.scale.setScalar(.3);G.position.set(o.x+d.x*.8,o.y-.1,o.z+d.z*.8);G.quaternion.identity();needCenter=false;}}
   if(renderer.xr.isPresenting){placeKB(dt);gestures(dt);sticks(dt);if(arMode&&frame)arFrame(frame);drawKBIfDirty();}
   else{
     U.uH.value=renderer.domElement.height;
