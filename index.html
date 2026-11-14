@@ -31,7 +31,6 @@ input[type=file]{position:absolute;opacity:0;width:0;height:0}
 #info .w{opacity:.6}
 #hint{bottom:58px;left:14px;font-size:12px;opacity:.8;max-width:min(520px,calc(100vw - 150px));line-height:1.45}
 #VRButton{background:rgba(3,16,28,.8)!important;border:1px solid var(--cy)!important;color:var(--cy)!important;font-family:inherit!important;border-radius:2px!important}
-
 #hist{left:14px;top:230px;bottom:14px;width:min(380px,calc(100vw - 28px));display:flex;flex-direction:column;padding:0;overflow:hidden}
 body.hopen #hint{display:none}
 .htabs{display:flex;gap:6px;padding:10px 10px 0;align-items:center}
@@ -92,15 +91,12 @@ body.hopen #helpbtn{display:none}
 </div>
 <button id="helpbtn" aria-label="Help" aria-expanded="false" title="Help">?</button>
 <div id="hint" class="panel" hidden>Desktop: drag to orbit, wheel to zoom, WASD/QE to fly, click concepts to select several (click again to deselect). Every word you type is searched, including common words like the or not; only the drawn field hides them. VR: a query bar, keyboard and a results box float in view (point and pinch or trigger the bar to type, or tap Voice). Mixed reality (Quest 3): press Enter mixed reality to see your room through the passthrough cameras. Pinch and drag anywhere to move the data sphere, pinch with both hands and spread to resize, quick pinch on a concept to select it; select several to see how they connect, and pinch a selected word again to deselect it. The field remembers where you put it between mixed-reality sessions. Sticks fly in VR. A adds the selected concept to the query, B clears. Press Place on the panel to snap the field onto a wall, table or floor. Brighter nodes are more frequent words. The field learns Hebbian-style: words you query or select together are pulled closer and their links glow, and the arrangement is saved per text. Line colour runs violet to cyan to amber to white as a connection gets stronger. Once you have a query or selection, a Play button, timeline and speed button appear: words appear one by one, strongest resonance first (the speed button cycles 0.25x to 4x). The results box scrolls: thumbstick while pointing at it, or pinch-drag it; tap a row to select that word.</div>
-
 <script type="module">
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {VRButton} from 'three/addons/webxr/VRButton.js';
 import {XRHandModelFactory} from 'three/addons/webxr/XRHandModelFactory.js';
 import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
-
-/* ---------- lexicon (lifted verbatim from the symbol transformer) ---------- */
 const STOP=new Set(`the and for with are there was were been has had have did does doing having done you your yours her hers him his she they them their theirs its our ours mine that this per of to in is it be by as at an on am he me my we us if or so do but off out himself herself itself myself yourself ourselves themselves yes no thereby get gets got getting goes going went let lets one ones than then too very just also can could would should might may must shall these those such some any each both either neither other others another about from into onto here while upon up down out off even yet nor quite whenever wherever whatever whoever whichever what when where which who whom whose why how because since during before after above below between through under again further once`.split(' '));
 `it's|that's|there's|here's|what's|who's|how's|where's|when's|why's|which's|he's|she's|let's|i'm|i've|i'll|i'd|you're|you've|you'll|you'd|we're|we've|we'll|they're|they've|they'll`.split('|').forEach(w=>STOP.add(w));
 {const pr='i you he she it we they that there here what who how when where which whom why this these those one someone everyone nobody let would could should might must may will shall'.split(' ');
@@ -114,11 +110,9 @@ const okw=e=>e.length<=24&&!/(.)\1\1/.test(e)&&!WHW.has(e);
 function junkW(e){if(/n't$/.test(e))return true;if(e.indexOf("'")<0)return false;const t=/^([a-z-]+)'(s|d|ll|ve|re|m|t)$/.exec(e);return !t||STOP.has(t[1])||t[1].length<2||t[2]!=='s';}
 const TOKRE=/[\p{L}\p{M}]+(?:['-][\p{L}\p{M}]+)*|\d+(?:[.,]\d+)*|[.!?;:()\u2014\u2013]+|,|\n[ \t\r]*\n/gu;
 const FILL=1,BRKP=.9,MAXBRK=40;
-
-/* ---------- corpus: same encoding as the symbol transformer ---------- */
 let corp=[],vocab=['','\u0001'],cfreq=[0,0],cIdf=new Float32Array(0),CN=0,LT=1,HZ=120,DEC=[],PMIN=25,DOCW=80,exclC=null;
 const rawId=new Map();
-let svocab=[''],sfreq=[0];const srawId=new Map(); // stop words: hidden from the field, but still indexed so they can be searched
+let svocab=[''],sfreq=[0];const srawId=new Map();
 function sidFor(e){let t=srawId.get(e);if(t===undefined){t=svocab.length;svocab.push(e);srawId.set(e,t);}return t;}
 function setRange(h,a){HZ=h;DEC=Array.from({length:h+1},(_,s)=>s?Math.pow(s,-a):0);}
 function resetCorpus(){corp=[];vocab=['','\u0001'];cfreq=[0,0];rawId.clear();exclC=null;svocab=[''];sfreq=[0];srawId.clear();}
@@ -139,7 +133,7 @@ function encode(text){
   }
   return {ids:Uint32Array.from(ids),pol:Uint8Array.from(pol),sw:Uint32Array.from(sw),n};
 }
-function foldPlurals(){ // plural forms count as their singular when the singular occurs
+function foldPlurals(){
   const rm=Uint32Array.from({length:vocab.length},(_,i)=>i);let any=false;
   for(let i=2;i<vocab.length;i++){const w=vocab[i];
     if(w.length<4||w.charCodeAt(0)<97||/(ss|us|is)$/.test(w)||!w.endsWith('s'))continue;
@@ -175,7 +169,6 @@ function eachFwd(l,t,fn,end,pb){const a=Math.min(end-1,t+HZ);let o=0,i=1;
   for(let s=t+1;s<=a;s++){const x=l[s];if(x!==0){if(x>FILL)fn(s,s-t,i);}else{if(++o>MAXBRK)break;const e=pb&&pb.get(s);i*=e===undefined?BRKP:e?.5:0;if(i===0)break;}}}
 function eachBwd(l,t,fn,start,pb){const a=Math.max(start,t-HZ);let o=0,i=1;
   for(let s=t-1;s>=a;s--){const x=l[s];if(x!==0){if(x>FILL)fn(s,t-s,i);}else{if(++o>MAXBRK)break;const e=pb&&pb.get(s);i*=e===undefined?BRKP:e?.5:0;if(i===0)break;}}}
-/* distance-decayed co-occurrence scan around each term, lift-scored (symbol transformer's leapScan) */
 function leapScan(terms,excl){
   const n=vocab.length,s=new Uint16Array(n),ss=new Uint16Array(svocab.length),SD=new Map(),hasS=terms.some(e=>e.sids&&e.sids.length);
   const R=terms.map(()=>({acc:new Map(),raw:new Map(),fp:new Map(),fw:new Map(),hits:0}));
@@ -220,7 +213,6 @@ function leapOverlap(e,t,n,s,cf,nn){
   a.forEach((e,id)=>{const c=e.cw/r;if(e.n<n||c<s||(nn&&e.nc<nn))return;o.push({id,cov:c,n:e.n,idx:e.idx,per:e.per,fp:e.fp,s:Math.pow(c,1.5)*(e.sw/e.cw)});});
   return o.sort((x,y)=>y.s-x.s);
 }
-/* Leap 1 (words co-occurring with several query terms) and Leap 2 (overlap of the overlap) */
 function coocc(qWords){
   const s=vocab.length,o=new Uint8Array(s),a=[];
   qWords.forEach(t=>{
@@ -228,7 +220,7 @@ function coocc(qWords){
     if(!(id>1&&cfreq[id])&&t.endsWith("'s")){const b=rawId.get(t.slice(0,-2));if(b>1&&cfreq[b])id=b;}
     if(id>1&&cfreq[id])ids.push(id);
     else{const sid=srawId.get(t);
-      if(sid&&sfreq[sid])sids.push(sid); // stop words are searched too; the field just doesn't draw them
+      if(sid&&sfreq[sid])sids.push(sid);
       else if(t.length>=5)for(let i=2;i<s;i++){const w=vocab[i];if(cfreq[i]&&w.length>=5&&w.slice(0,5)===t.slice(0,5)&&Math.abs(w.length-t.length)<=3)ids.push(i);}}
     if(!ids.length&&!sids.length)return;ids.forEach(x=>o[x]=1);
     a.push({q:t,ids,sids,f:ids.reduce((x,y)=>x+cfreq[y],0)+sids.reduce((x,y)=>x+sfreq[y],0)});});
@@ -238,7 +230,7 @@ function coocc(qWords){
   const u=leapScan(a,d),m=a.map((_,i)=>i).filter(i=>u[i].hits>0);
   if(!m.length)return {seeds:a,M:[]};
   const f=m.map(i=>u[i]),p=m.map(i=>a[i].w),g=m.length,cfl=m.map(i=>a[i].ids.length>0),gC=cfl.filter(Boolean).length;
-  let y=leapOverlap(f,p,Math.min(2,g),0,cfl,Math.min(2,gC)); // a hit must still match the content words; stop words add weight
+  let y=leapOverlap(f,p,Math.min(2,g),0,cfl,Math.min(2,gC));
   if(g>1&&y.length<2*g){const e=leapOverlap(f,p,1,0,cfl,Math.min(1,gC)).filter(e=>!y.some(t=>t.id===e.id)).slice(0,2*g-y.length);y=y.concat(e).sort((x,z)=>z.s-x.s);}
   y=y.slice(0,Math.min(70,Math.max(g,adKeep(y.map(e=>e.s)))));
   const w=y[0]?y[0].s:1;y.forEach(e=>{e.s/=w;e.via=e.idx.map(i=>a[m[i]].q);});
@@ -260,7 +252,7 @@ function coocc(qWords){
   y.forEach(e=>{if(!seen.has(e.id)){seen.add(e.id);M.push({id:e.id,s:e.s,lp:1,pq:e.pq,via:e.via});}});
   b.forEach(e=>{if(!seen.has(e.id)){seen.add(e.id);M.push({id:e.id,s:e.s,lp:2,pq:e.pq,via:e.via,from:e.from});}});
   M=M.filter(e=>okw(vocab[e.id])&&!junkW(vocab[e.id]));
-  if(M.length>=4){ // leap-2 cohesion: results that share contexts with other results are favoured
+  if(M.length>=4){
     const P=leapScan(M.map(e=>({ids:[e.id]})),d),n=M.length,
       nm=P.map(x=>{let q=0;x.p.forEach(v=>q+=v*v);return Math.sqrt(q)||1;}),ov=new Float32Array(n*n);
     for(let i=0;i<n;i++){const A=P[i].p;if(!A.size)continue;
@@ -273,8 +265,6 @@ function coocc(qWords){
   M.sort((x,z)=>z.s-x.s);
   return {seeds:a,M};
 }
-
-/* ---------- graph model: nodes are the words the pipeline above would surface ---------- */
 let nodes=[],edges=[],word2i=new Map(),sel=-1,Q=null;const SS=new Set();let selV=0;
 let curCorpus=null,replaying=false,hist=[],corpora=[];
 const MAXN=600,K=6;
@@ -294,7 +284,7 @@ function buildField(){
     const sc=scan[k],top=[...sc.p].filter(([r,v])=>id2k.has(r)&&r!==id).sort((a,b)=>b[1]-a[1]).slice(0,K);
     top.forEach(([r,v])=>{
       const j=id2k.get(r),key=k<j?k+'|'+j:j+'|'+k;
-      const fa=sc.fw.get(r)/(sc.acc.get(r)||1); // share of occurrences where r comes after this word
+      const fa=sc.fw.get(r)/(sc.acc.get(r)||1);
       let e=pairs.get(key);if(!e){e={a:Math.min(k,j),b:Math.max(k,j),sw:0,dir:0,c:0};pairs.set(key,e);}
       e.sw+=v;e.c++;e.dir+=(k===e.a?fa:1-fa);});
   });
@@ -309,7 +299,6 @@ function buildField(){
   const mw=Math.max(...edges.map(e=>e.w),1e-6);edges.forEach(e=>e.wn=Math.sqrt(e.w/mw));
   layout();
 }
-
 function layout(){
   const N=nodes.length,P=new Float32Array(N*3),D=new Float32Array(N*3);
   for(let i=0;i<N;i++){const u=Math.random()*2-1,a=Math.random()*6.283,r=Math.sqrt(1-u*u);P[i*3]=r*Math.cos(a);P[i*3+1]=u;P[i*3+2]=r*Math.sin(a);}
@@ -336,7 +325,6 @@ function layout(){
   let cx=0,cy=0,cz=0;for(let i=0;i<N;i++){cx+=P[i*3];cy+=P[i*3+1];cz+=P[i*3+2];}cx/=N;cy/=N;cz/=N;
   let mx=0;for(let i=0;i<N;i++){P[i*3]-=cx;P[i*3+1]-=cy;P[i*3+2]-=cz;mx=Math.max(mx,Math.hypot(P[i*3],P[i*3+1],P[i*3+2]));}
   for(let i=0;i<N*3;i++)P[i]/=mx;
-  /* give every word a little more room: stretch the sphere, then push apart any pair sitting too close, so each is easier to point at */
   const SP=2.1;for(let i=0;i<N*3;i++)P[i]*=SP;
   const dm=.85*Math.cbrt(4.19*SP*SP*SP/N);
   for(let it=0;it<80;it++){let moved=false;
@@ -346,8 +334,6 @@ function layout(){
     if(!moved)break;}
   nodes.forEach((n,i)=>{n.x=P[i*3];n.y=P[i*3+1];n.z=P[i*3+2];});
 }
-
-/* ---------- three.js scene ---------- */
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
 renderer.xr.enabled=true;renderer.xr.setFramebufferScaleFactor(1.4);renderer.xr.setReferenceSpaceType('local-floor');
@@ -359,18 +345,16 @@ const dolly=new THREE.Group();dolly.add(camera);scene.add(dolly);
 const G=new THREE.Group();G.position.set(0,1.4,-1.1);G.scale.setScalar(.6);scene.add(G);
 const controls=new OrbitControls(camera,renderer.domElement);
 controls.target.copy(G.position);controls.enableDamping=true;controls.update();
-
 const grid=new THREE.GridHelper(10,40,0x0b5266,0x06222c);grid.material.transparent=true;grid.material.opacity=.5;scene.add(grid);
 const ringsG=new THREE.Group();scene.add(ringsG);
 const ringMat=new THREE.LineBasicMaterial({color:0x2bd6ff,transparent:true,opacity:.35,blending:THREE.AdditiveBlending});
-[.55,.4,.25].forEach(r=>{const pts=[];for(let i=0;i<=96;i++)pts.push(new THREE.Vector3(Math.cos(i/96*6.2832)*r,0,Math.sin(i/96*6.2832)*r));const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),ringMat);l.position.set(0,.65,-1.1);ringsG.add(l);});
+[.55,.4,.25].forEach(r=>{const pts=[];for(let i=0;i<=96;i++)pts.push(new THREE.Vector3(Math.cos(i/96*6.2832)*r,0,Math.sin(i/96*6.2832)*r));const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),ringMat);ringsG.add(l);});
 const U={uT:{value:0},uH:{value:900},uG:{value:1},uX:{value:0}};
-/* pure additive light: colour adds, alpha untouched, so passthrough shows through instead of dark halos */
 const ADD={blending:THREE.CustomBlending,blendEquation:THREE.AddEquation,blendSrc:THREE.OneFactor,blendDst:THREE.OneFactor,blendEquationAlpha:THREE.AddEquation,blendSrcAlpha:THREE.ZeroFactor,blendDstAlpha:THREE.OneFactor};
 const nodeMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute float aSize;attribute float aI;attribute float aF;attribute vec3 aCol;uniform float uH;uniform float uT;varying vec3 vC;varying float vI;varying float vF;
 void main(){vec4 mv=modelViewMatrix*vec4(position,1.);float sn=sin(uT*2.6+position.x*40.+position.y*31.);float tw=.68+.32*sn;
-gl_PointSize=max(aSize*2.4*(1.+.16*sn)*(1.+.4*(1.-aF))*uH*.5*projectionMatrix[1][1]/-mv.z,11.+4.*uX);vC=aCol;vI=aI*tw;vF=aF;gl_Position=projectionMatrix*mv;}`,
+gl_PointSize=max(aSize*9.6*(1.+.16*sn)*(1.+.4*(1.-aF))*uH*.5*projectionMatrix[1][1]/-mv.z,32.+10.*uX);vC=aCol;vI=aI*tw;vF=aF;gl_Position=projectionMatrix*mv;}`,
 fragmentShader:`uniform float uG;uniform float uX;varying vec3 vC;varying float vI;varying float vF;void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;
 float h=pow(1.-d*2.,2.);float c=smoothstep(.22,.0,d);float k=smoothstep(.3,.26,d);float rim=smoothstep(.4,.36,d)*smoothstep(.28,.33,d);float ring=smoothstep(.5,.45,d)*smoothstep(.3,.38,d);
 float sharp=h*(1.1-.6*uX)+c*1.9+ring*.7+uX*(k*.8+rim*.7);float soft=pow(1.-d*2.,1.4)*.9;gl_FragColor=vec4(vC*mix(soft,sharp,vF)*vI*uG,1.);}`});
@@ -379,8 +363,7 @@ vertexShader:`attribute float aT;attribute float aI;attribute float aPh;attribut
 void main(){vA=aI*mix(.55,1.,aT);vC=aCol;
 gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
 fragmentShader:`uniform float uG;varying float vA;varying vec3 vC;void main(){gl_FragColor=vec4(vC*vA*uG,1.);}`});
-
-const TR=7,PN=TR*2; // comet: 7 points per particle, 2 particles per edge
+const TR=7,PN=TR*2;
 const dotMat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,...ADD,
 vertexShader:`attribute vec3 aB;attribute vec3 aCol;attribute float aPh;attribute float aI;attribute float aDir;attribute float aLag;attribute float aK;uniform float uT;uniform float uH;uniform float uX;varying float vI;varying float vH;varying vec3 vC;
 void main(){float len=length(aB-position)+1e-4;float t=fract(uT*.075/len+aPh);float d=t*len-aLag*.014;float f=d/len;
@@ -392,7 +375,7 @@ fragmentShader:`uniform float uG;uniform float uX;varying float vI;varying float
 gl_FragColor=vec4((vC*h+vec3(1.)*c*vH*vH)*vI*.75*uG,1.);}`});
 const CY=[.36,.94,1],VI=[.6,.48,1],AM=[1,.7,.28],WH=[.92,1,1],GO=[1,.84,.45];
 const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
-const RAMP=[[0,[.42,.3,1]],[.3,CY],[.55,[.45,1,.72]],[.78,AM],[1,[1,.96,.86]]]; // weak -> strong connection
+const RAMP=[[0,[.42,.3,1]],[.3,CY],[.55,[.45,1,.72]],[.78,AM],[1,[1,.96,.86]]];
 function ramp(t){t=Math.max(0,Math.min(1,t));for(let i=1;i<RAMP.length;i++)if(t<=RAMP[i][0]){const a=RAMP[i-1],b=RAMP[i];return mix(a[1],b[1],(t-a[0])/(b[0]-a[0]));}return RAMP[RAMP.length-1][1];}
 let pts,lines,dots,dI,dD,dC,nA,nS,nC,nF,eI,eC,labelGroup=new THREE.Group(),fmax=1;G.add(labelGroup);
 const labelCache=new Map();
@@ -414,7 +397,7 @@ function buildVisuals(){
   labelCache.forEach(s=>{s.material.map.dispose();s.material.dispose();});labelCache.clear();
   const N=nodes.length,E=edges.length;fmax=Math.max(...nodes.map(n=>n.score));
   {const lf=nodes.map(n=>Math.log(1+n.freq)),lo=Math.min(...lf),hi=Math.max(...lf);
-   nodes.forEach((n,i)=>n.nf=hi>lo?(lf[i]-lo)/(hi-lo):.5);} // 0 = rarest drawn word, 1 = most frequent
+   nodes.forEach((n,i)=>n.nf=hi>lo?(lf[i]-lo)/(hi-lo):.5);}
   const pos=new Float32Array(N*3);nodes.forEach((n,i)=>pos.set([n.x,n.y,n.z],i*3));
   nA=new Float32Array(N);nF=new Float32Array(N).fill(1);nS=new Float32Array(N);nC=new Float32Array(N*3);
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
@@ -434,16 +417,13 @@ function buildVisuals(){
   lines=new THREE.LineSegments(lg,edgeMat);lines.frustumCulled=false;
   G.add(lines,pts,dots);SS.clear();selV++;sel=-1;Q=null;RV.cn=-1;RV.playing=false;applyState();
 }
-
-/* ---------- state / highlighting ---------- */
-/* ---------- resonance timeline: words appear one by one, strongest resonance first ---------- */
 const RV={on:false,playing:false,order:[],count:0,acc:0,cs:-2,cq:null,cn:-1,speed:1};
 const SPEEDS=[.25,.5,1,2,4],hasCtx=()=>SS.size>0||!!(Q&&Q.top);
 try{const v=+localStorage.getItem('cf.spd');if(SPEEDS.includes(v))RV.speed=v;}catch(e){}
 function tlSpeed(){RV.speed=SPEEDS[(SPEEDS.indexOf(RV.speed)+1)%SPEEDS.length];try{localStorage.setItem('cf.spd',RV.speed);}catch(e){}tlUI();}
 function resonanceOrder(){
   const N=nodes.length;
-  if(SS.size){ // best-path resonance from the selection: strongest links first, decaying with each hop
+  if(SS.size){
     const r=new Float32Array(N),done=new Uint8Array(N);SS.forEach(s=>r[s]=1);
     for(let it=0;it<N;it++){
       let b=-1,bv=0;for(let i=0;i<N;i++)if(!done[i]&&r[i]>bv){bv=r[i];b=i;}
@@ -475,7 +455,7 @@ function tlSet(v){
 }
 function tlStep(dt){
   if(!RV.playing)return;
-  const M=RV.order.length,rate=2*RV.speed; // words per second: 1x = 2 words/s
+  const M=RV.order.length,rate=2*RV.speed;
   RV.acc+=dt*rate;const k=Math.floor(RV.acc);if(!k)return;RV.acc-=k;
   RV.count=Math.min(M,RV.count+k);
   if(RV.count>=M){RV.playing=false;RV.on=false;}
@@ -484,7 +464,7 @@ function tlStep(dt){
 function tlUI(){
   const $$=s=>document.querySelector(s),p=$$('#play'),r=$$('#tlr'),c=$$('#tlc'),row=$$('#tl'),sp=$$('#spd');if(!p)return;
   const M=RV.order.length;
-  row.hidden=!hasCtx(); // the timeline only exists once there is a query or selection to resonate with
+  row.hidden=!hasCtx();
   p.textContent=RV.playing?'Pause':(RV.count>0&&RV.count<M?'Resume':'Play');
   sp.textContent=RV.speed+'\u00d7';
   r.max=M;r.value=RV.count;r.disabled=!M;c.textContent=M?`${RV.count}/${M}`:'0/0';
@@ -504,7 +484,6 @@ function applyState(quick){
   }else{
     for(let i=0;i<N;i++)nI[i]=.18+1.9*Math.pow(ni[i],1.2)+.3*Math.min(1,nodes[i].hs||0);
     for(let e=0;e<E;e++){ei[e]=(.04+.14*edges[e].wn)*(.45+.9*(nodes[edges[e].s].nf+nodes[edges[e].t].nf)/2)*(1+1.5*(edges[e].h||0));er[e]=Math.min(1,.45*edges[e].wn+.45*(edges[e].h||0));}
-    
   }
   const pre=nI.slice();
   if(SS.size){
@@ -525,7 +504,6 @@ function applyState(quick){
       else if(ra||rb){ei[k]=.04+.1*(ra?ra.rel:rb.rel)*e.wn;er[k]=.08;}
     });
   }
-  /* timeline mask: words not yet reached by the playhead are hidden, the newest glows, the last few are labelled */
   const hid=new Uint8Array(N);let newest=-1;
   if(RV.on){
     const ord=RV.order;
@@ -549,7 +527,7 @@ function applyState(quick){
   const flowQ=Q&&Q.A,aT=lines.geometry.attributes.aT;
   edges.forEach((e,k)=>{
     eI[k*2]=ei[k]*ea[e.s];eI[k*2+1]=ei[k]*ea[e.t];
-    eC.set(ramp(er[k]*(.55+.45*ea[e.s])),k*6);eC.set(ramp(er[k]*(.55+.45*ea[e.t])),k*6+3); // colour runs along the line with intensity
+    eC.set(ramp(er[k]*(.55+.45*ea[e.s])),k*6);eC.set(ramp(er[k]*(.55+.45*ea[e.t])),k*6+3);
     const dir=flowQ&&Q.A[e.s]<Q.A[e.t]?1:0;
     aT.array[k*2]=dir;aT.array[k*2+1]=1-dir;
     const act=(RV.on&&(hid[e.s]||hid[e.t]))?0:SS.size?(ec[k]===2?.3+.6*er[k]:ec[k]===4?.16:0):(flowQ&&ei[k]>.12?ei[k]:0);
@@ -583,8 +561,6 @@ function runQuery(text){
 function toggleSel(i){if(SS.has(i))SS.delete(i);else SS.add(i);sel=SS.size?[...SS].pop():-1;selV++;applyState();if(SS.has(i)&&!replaying)learn(selAct());return SS.has(i);}
 function select(i){if(i<0)return;const on=toggleSel(i);if(on&&SS.size===1&&!replaying)pushHist(selectEntry(i));}
 function clearAll(){SS.clear();selV++;sel=-1;Q=null;$q.value='';applyState();if(nodes.length)stat(summary());}
-
-/* ---------- UI ---------- */
 const $=s=>document.querySelector(s),$q=$('#q'),$info=$('#info');
 const stat=t=>{$('#stat').textContent=t;hud();};
 const summary=()=>`${nodes.length} concepts, ${edges.length} links from ${docCount} file${docCount===1?'':'s'}.`;
@@ -624,7 +600,6 @@ $('#spd').onclick=tlSpeed;
 $('#helpbtn').onclick=()=>{const h=$('#hint');h.hidden=!h.hidden;$('#helpbtn').setAttribute('aria-expanded',String(!h.hidden));};
 $('#tlr').addEventListener('input',e=>tlSet(+e.target.value));
 $info.addEventListener('click',e=>{const li=e.target.closest('li[data-i]');if(li)select(+li.dataset.i);});
-/* ---------- XR panel: status strip, query bar and keyboard, kept low in view ---------- */
 let needCenter=false,arMode=false,placing=false,placedOnce=false,arScale=null,lastHit=false,reqLook=null,sessAR=false,centerS=.3,xrNote='';
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let listening=false,vRec=null,vFinal=false,vErr=false;
 let hudA='Concept field',hudB='';
@@ -633,7 +608,6 @@ const kc=document.createElement('canvas');kc.width=KW;kc.height=KH;
 const kctx=kc.getContext('2d'),ktex=new THREE.CanvasTexture(kc);ktex.colorSpace=THREE.SRGBColorSpace;ktex.anisotropy=4;
 const kb=new THREE.Mesh(new THREE.PlaneGeometry(.64,.64*KH/KW),new THREE.MeshBasicMaterial({map:ktex,transparent:true,depthTest:false}));
 kb.renderOrder=30;kb.visible=false;kb.frustumCulled=false;scene.add(kb);
-/* results box: the same words the 2D info panel shows (selection's neighbours or the query's top words), with connection-strength bars */
 const IW=640,IH=500,HEAD=110,ROW=52,VIS=7,FNT='"Chakra Petch",system-ui,sans-serif';
 const ic=document.createElement('canvas');ic.width=IW;ic.height=IH;
 const ictx=ic.getContext('2d'),itex=new THREE.CanvasTexture(ic);itex.colorSpace=THREE.SRGBColorSpace;itex.anisotropy=4;
@@ -784,7 +758,6 @@ function keyAct(k,r){
   kDirty=true;pressK=k;pressT=performance.now();
   try{r.c.userData.src?.gamepad?.hapticActuators?.[0]?.pulse(.35,30);}catch(e){}
 }
-/* lazy-follow: panel stays at a fixed spot below the eyes, turning only when you turn well away from it */
 const _h=new THREE.Vector3(),_f=new THREE.Vector3(),_t=new THREE.Vector3(),_t2=new THREE.Vector3();let kYaw=0,kInit=false,kMove=false;
 function placeKB(dt){
   const xc=renderer.xr.getCamera();xc.getWorldPosition(_h);xc.getWorldDirection(_f);_f.y=0;
@@ -796,7 +769,7 @@ function placeKB(dt){
   }
   const sy=Math.sin(kYaw),cy=Math.cos(kYaw);
   _t.set(_h.x-sy*.5,_h.y-.42,_h.z-cy*.5);
-  _t2.set(_h.x-sy*.8+cy*.45,_h.y+.02,_h.z-cy*.8-sy*.45); // results box: up and to the right
+  _t2.set(_h.x-sy*.8+cy*.45,_h.y+.02,_h.z-cy*.8-sy*.45);
   if(!kInit){kb.position.copy(_t);ib.position.copy(_t2);}else{const a=Math.min(1,dt*8);kb.position.lerp(_t,a);ib.position.lerp(_t2,a);}
   kInit=true;kb.rotation.set(-.7,kYaw,0,'YXZ');ib.rotation.set(0,kYaw-.35,0,'YXZ');kb.updateMatrixWorld(true);ib.updateMatrixWorld(true);
 }
@@ -817,16 +790,14 @@ function uiStep(){
     else if(press&&ih){r.uiHold=true;r.ibd={py:ih.py,off:iScroll,mv:false};}
     else if(press&&placing)confirmPlace();
     if(trig&&r.slide&&hit)tlFromPx(hit.px);
-    if(trig&&r.ibd&&ih){if(Math.abs(ih.py-r.ibd.py)>14)r.ibd.mv=true;if(r.ibd.mv)setScroll(r.ibd.off+(r.ibd.py-ih.py)/ROW);} // pinch-drag scrolls
+    if(trig&&r.ibd&&ih){if(Math.abs(ih.py-r.ibd.py)>14)r.ibd.mv=true;if(r.ibd.mv)setScroll(r.ibd.off+(r.ibd.py-ih.py)/ROW);}
     if(!trig){
-      if(r.ibd&&!r.ibd.mv&&infoCache&&r.ibd.py>HEAD){const it=infoCache.rows[Math.floor((r.ibd.py-HEAD)/ROW+iScroll)];if(it&&it.i>=0)select(it.i);} // quick tap selects the row
+      if(r.ibd&&!r.ibd.mv&&infoCache&&r.ibd.py>HEAD){const it=infoCache.rows[Math.floor((r.ibd.py-HEAD)/ROW+iScroll)];if(it&&it.i>=0)select(it.i);}
       r.uiHold=false;r.slide=false;r.ibd=null;
     }
   });
   const sig=rig.map(r=>KEYS.indexOf(r.hk)).join(',');if(sig!==hsig){hsig=sig;kDirty=true;}
 }
-
-/* ---------- AR: place the field on a real surface ---------- */
 const planeG=new THREE.Group(),planeMap=new Map();dolly.add(planeG);planeG.visible=false;
 const planeMat=new THREE.LineBasicMaterial({color:0x2bd6ff,transparent:true,opacity:.4,depthTest:false});
 const reticle=new THREE.Group();reticle.matrixAutoUpdate=false;reticle.visible=false;dolly.add(reticle);
@@ -867,7 +838,6 @@ function confirmPlace(){
 function previewAt(p,n){
   const xc=renderer.xr.getCamera();xc.getWorldPosition(_o);
   const horiz=Math.abs(n.y)>.75,up=n.y>0,drop=_o.y-p.y;
-  // floor: large; tabletop: small; ceiling: medium; wall: medium. Field radius is 1 in local units, so offset by scale
   const s=arScale??(horiz?(up?(drop>1.1?.5:.22):.4):.3);
   G.scale.setScalar(s);G.position.copy(p).addScaledVector(n,s*1.35+.03);G.quaternion.identity();
   reticle.matrix.copy(hM);reticle.matrixWorldNeedsUpdate=true;rFoot.scale.setScalar(s*1.3);reticle.visible=true;
@@ -882,15 +852,12 @@ function arFrame(frame){
   if(pose){
     hM.fromArray(pose.transform.matrix);hP.setFromMatrixPosition(hM);hN.set(0,1,0).transformDirection(hM);
     lastHit=true;previewAt(hP,hN);
-  }else if(!lastHit){ // no surface found yet: float the field ahead so it can still be placed
+  }else if(!lastHit){
     const xc=renderer.xr.getCamera();xc.getWorldPosition(_o);xc.getWorldDirection(_d);_d.y=0;_d.normalize();
     G.scale.setScalar(arScale??.3);G.position.set(_o.x+_d.x,_o.y-.1,_o.z+_d.z);reticle.visible=false;
   }
 }
 hud();
-
-/* ---------- AR persistence: the field stays where you put it, across sessions ----------
-   Preferred: a persistent spatial anchor (survives re-entering and tracks the real room). Fallback: the raw pose in localStorage. */
 const AR_KEY='cf.ar';
 let arSaved=null,arAnchor=null,arRest=0,arRestT=0,arDirty=false,arSettle=0,arBusy=false,arLast=null;
 try{arSaved=JSON.parse(localStorage.getItem(AR_KEY)||'null');}catch(e){}
@@ -898,7 +865,7 @@ if(!arSaved||!Array.isArray(arSaved.p)||!Array.isArray(arSaved.q)||!isFinite(arS
 const arPose=()=>[G.position.x,G.position.y,G.position.z,G.quaternion.x,G.quaternion.y,G.quaternion.z,G.quaternion.w,G.scale.x];
 const arDiff=(a,b)=>!a||!b||a.some((v,i)=>Math.abs(v-b[i])>(i===7?.002:.003));
 const arWrite=()=>{try{localStorage.setItem(AR_KEY,JSON.stringify(arSaved));}catch(e){}};
-function arBegin(){ // returns true when a saved placement will be restored instead of auto-centring
+function arBegin(){
   arAnchor=null;arLast=null;arDirty=false;arSettle=0;arBusy=false;
   if(arSaved&&nodes.length){arRest=1;arRestT=0;G.visible=false;G.scale.setScalar(THREE.MathUtils.clamp(arSaved.s,.08,8));needCenter=false;return true;}
   arRest=0;return false;
@@ -937,7 +904,7 @@ function arCommit(frame){
     if(oldU&&oldU!==u){try{s.deletePersistentAnchor(oldU);}catch(e){}}
   }).catch(()=>{}).finally(()=>{arBusy=false;});
 }
-function arFlush(){ // session ending: store the pose even if it hadn't settled yet
+function arFlush(){
   if(arLast&&arRest===0&&nodes.length&&arDiff(arPose(),arLast)){arSaved={p:G.position.toArray(),q:G.quaternion.toArray(),s:G.scale.x};arWrite();}
 }
 function arPersist(frame,dt){
@@ -958,8 +925,6 @@ function arPersist(frame,dt){
   }
   if(arAnchor){const t=arAnchorPose(frame,ref);if(t)arApply(t);}
 }
-
-/* ---------- desktop picking & flying ---------- */
 const ray=new THREE.Raycaster(),tmp=new THREE.Vector3(),keys={};
 function pick(o,d,maxAng){
   let best=-1,ba=maxAng;
@@ -982,11 +947,8 @@ renderer.domElement.addEventListener('pointerup',e=>{
 addEventListener('keydown',e=>{if(document.activeElement!==$q)keys[e.code]=true;});
 addEventListener('keyup',e=>keys[e.code]=false);
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
-
-/* ---------- VR: hands, controllers, sticks ---------- */
 document.body.appendChild(VRButton.createButton(renderer));
 const arBtn=document.querySelector('#ar'),vrB=document.querySelector('#vr');
-/* VR and mixed reality share one immersive-ar session: "VR" just draws an opaque backdrop, so the two can be swapped in-headset without restarting */
 if(navigator.xr&&navigator.xr.isSessionSupported)navigator.xr.isSessionSupported('immersive-ar').then(ok=>{arBtn.hidden=!ok;vrB.hidden=!ok;document.body.classList.toggle('arok',ok);}).catch(()=>{});
 async function startXR(look){
   const cur=renderer.xr.getSession();if(cur){cur.end();return;}
@@ -1032,7 +994,6 @@ function switchLook(pass){
   else xrNote='';
   resetGestures();hud();
 }
-/* the field must never be lost: re-centre it in front of the user whenever it is out of range, non-finite, or crushed to nothing */
 function fieldBad(){
   if(!nodes.length)return false;
   renderer.xr.getCamera().getWorldPosition(_hv);
@@ -1054,13 +1015,13 @@ function xrWatch(dt){
   lostT=fieldBad()?lostT+dt:0;if(lostT>.4){lostT=0;recoverField(true);}
 }
 function watchSession(s){
-  s.addEventListener('visibilitychange',()=>{ // system menu / headset removed and back
+  s.addEventListener('visibilitychange',()=>{
     resetGestures();kInit=false;kDirty=true;
     if(s.visibilityState==='visible')recoverField(false);
   });
   s.addEventListener('inputsourceschange',()=>{resetGestures();});
   const rs=renderer.xr.getReferenceSpace();
-  if(rs&&rs.addEventListener)rs.addEventListener('reset',e=>{ // user re-centred their view
+  if(rs&&rs.addEventListener)rs.addEventListener('reset',e=>{
     resetGestures();kInit=false;
     if(e.transform&&arMode){
       try{const m=new THREE.Matrix4().fromArray(e.transform.matrix).invert();G.updateMatrix();G.matrix.premultiply(m);G.matrix.decompose(G.position,G.quaternion,G.scale);}catch(_){}
@@ -1098,7 +1059,6 @@ renderer.xr.addEventListener('sessionend',()=>{
   rig.forEach(r=>{r.hm.visible=true;r.cm.visible=true;r.uiHold=false;});resetGestures();
   dolly.position.set(0,0,0);dolly.rotation.set(0,0,0);camera.position.set(0,1.6,.9);controls.target.copy(G.position);controls.update();hud();
 });
-
 const Y=new THREE.Vector3(0,1,0);let mode='none',gi=-1,g0={},g1={},grabbing=false,prevBtn={};
 function handPoint(r){
   const j=r.h.joints,ti=j['thumb-tip'],ix=j['index-finger-tip'];
@@ -1120,7 +1080,7 @@ function gestures(dt){
   if(act.length===2){
     const a=P[0],b=P[1],d=a.distanceTo(b),M=a.clone().add(b).multiplyScalar(.5),ang=Math.atan2(b.x-a.x,b.z-a.z);
     if(mode!=='two'){if(g1)g1.moved=true;g0={d:Math.max(d,.05),ang,M,P:G.position.clone(),s:G.scale.x,q:G.quaternion.clone(),on:false};mode='two';}
-    else if(!g0.on){ // two-hand scale/rotate only after a deliberate move
+    else if(!g0.on){
       if(Math.abs(d/g0.d-1)>.12||Math.abs(Math.atan2(Math.sin(ang-g0.ang),Math.cos(ang-g0.ang)))>.25||M.distanceTo(g0.M)>.07)g0={d:Math.max(d,.05),ang,M,P:G.position.clone(),s:G.scale.x,q:G.quaternion.clone(),on:true};
     }else{
       const s=THREE.MathUtils.clamp(g0.s*Math.max(d,.02)/g0.d,.08,8),R=new THREE.Quaternion().setFromAxisAngle(Y,ang-g0.ang);
@@ -1143,7 +1103,7 @@ function gestures(dt){
     }else if(grabbing){
       const dl=p.clone().sub(g1.p);
       if(!g1.moved){
-        if(dl.length()>(g1.k>=0?.09:.05)){g1.moved=true;g1.p=p.clone();g1.P=G.position.clone();} // deliberate drag only; rebased so the field doesn't jump
+        if(dl.length()>(g1.k>=0?.09:.05)){g1.moved=true;g1.p=p.clone();g1.P=G.position.clone();}
       }else G.position.copy(g1.P).add(dl);
     }
   }else{endTap();mode='none';}
@@ -1172,7 +1132,6 @@ function sticks(dt){
     }
   }
 }
-/* ---------- persistence + history ---------- */
 let db=null;
 const dbP=new Promise(res=>{try{const r=indexedDB.open('conceptfield',1);
   r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('corpora',{keyPath:'id'});d.createObjectStore('history',{keyPath:'id'});};
@@ -1300,8 +1259,6 @@ $hb.addEventListener('click',async e=>{
   if(c&&!nodes.length&&!curCorpus){if(await ingest(c.docs,{id:c.id,noSave:true}))stat(summary()+' Restored from your last session.');}
   renderHist();
 })();
-
-/* ---------- Hebbian learning: words that are active together wire together and drift together ---------- */
 const HB=new Map();let settle=0;
 function selAct(){
   const m=new Map();
@@ -1337,6 +1294,12 @@ function updateGeom(){
   const mv=sp=>{const n=nodes[sp.userData.i];if(n)sp.position.set(n.x,n.y+.045,n.z);};
   labelGroup.children.forEach(mv);lodMap.forEach(mv);
 }
+function platform(){
+  let r=0.3;for(const n of nodes){const d=Math.hypot(n.x,n.y,n.z);if(d>r)r=d;}
+  const sc=G.scale.x,y=G.position.y-(r+.15)*sc-.05;
+  ringsG.position.set(G.position.x,y,G.position.z);ringsG.scale.setScalar(Math.max(.2,r*sc/.55));
+  grid.position.y=y-.02;
+}
 function hebbStep(){
   if(!settle||!nodes.length||!pts)return;
   settle--;
@@ -1364,7 +1327,6 @@ function hebbLoad(){
     const N=nodes.length;(d.h||[]).forEach(([a,b,h])=>{const i=w.get(a),j=w.get(b);if(i===undefined||j===undefined||i===j)return;const lo=Math.min(i,j),hi=Math.max(i,j);HB.set(lo*N+hi,{i:lo,j:hi,h});});}
   hebbSyncEdges();
 }
-/* ---------- zoom-reveal labels: words appear as the camera nears their nodes ---------- */
 const lodGroup=new THREE.Group();G.add(lodGroup);
 const lodMap=new Map(),_cl=new THREE.Vector3(),_cw=new THREE.Vector3();
 function lodSprite(i){
@@ -1391,8 +1353,6 @@ function lodLabels(dt){
     if(sp.parent!==lodGroup)lodGroup.add(sp);sp.material.opacity=Math.min(1,f);}
   for(const [i,sp] of lodMap)if(!on.has(i)){lodGroup.remove(sp);if(lodMap.size>150){sp.material.map.dispose();sp.material.dispose();lodMap.delete(i);}}
 }
-
-/* ---------- clearing text / memory ---------- */
 function unloadField(){
   resetCorpus();
   HB.clear();settle=0;nodes=[];edges=[];word2i=new Map();SS.clear();selV++;sel=-1;Q=null;visible=[];forcedSet=new Set();docCount=0;curCorpus=null;
@@ -1420,8 +1380,6 @@ $('#ctx').onclick=async()=>{
   if(!nodes.length&&!corpora.length){stat('Nothing is attached.');return;}
   if(confirm('Remove the attached text from the field and delete its saved copy and results? (History > Files > Forget everything wipes all saved text.)'))await clearCurrent();
 };
-
-/* ---------- voice input (Web Speech API, where the browser provides it) ---------- */
 const $mic=$('#mic');$mic.hidden=!SR;$mic.onclick=()=>voice();
 function vnote(t){if(renderer.xr.isPresenting){xrNote=t;hud();}else stat(t||(nodes.length?summary():'Attach one or more text files to build the field.'));}
 function voice(){
@@ -1435,11 +1393,10 @@ function voice(){
     if(vFinal&&t){kbOpen=false;runQuery(t);}else if(!vErr)vnote('');};
   try{vRec.start();}catch(e){vnote('Could not start the microphone.');}
 }
-/* ---------- loop ---------- */
 const clock=new THREE.Clock();
 renderer.setAnimationLoop((t,frame)=>{
   const dt=Math.min(clock.getDelta(),.05);U.uT.value+=dt;
-  G.updateMatrixWorld(true);tlStep(dt);hebbStep();lodLabels(dt);
+  G.updateMatrixWorld(true);tlStep(dt);hebbStep();platform();lodLabels(dt);
   if(needCenter&&renderer.xr.isPresenting&&frame){const xc=renderer.xr.getCamera(),o=xc.getWorldPosition(new THREE.Vector3()),d=xc.getWorldDirection(new THREE.Vector3());d.y=0;if(d.lengthSq()>1e-4){d.normalize();G.scale.setScalar(centerS);const dist=arMode?.8:1.1;G.position.set(o.x+d.x*dist,o.y-.1,o.z+d.z*dist);G.quaternion.identity();needCenter=false;}}
   if(renderer.xr.isPresenting){xrWatch(dt);placeKB(dt);gestures(dt);sticks(dt);if(arMode&&frame){arPersist(frame,dt);arFrame(frame);}drawKBIfDirty();}
   else{
